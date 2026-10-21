@@ -80,9 +80,7 @@ class ExcelExportService {
     put(
       0,
       1,
-      TextCellValue(
-        '対象期間: ${_dateFmt.format(from)} 〜 ${_dateFmt.format(to)}',
-      ),
+      TextCellValue('対象期間: ${_dateFmt.format(from)} 〜 ${_dateFmt.format(to)}'),
     );
     put(0, 2, TextCellValue('作成日: ${_dateFmt.format(DateTime.now())}'));
 
@@ -109,9 +107,7 @@ class ExcelExportService {
       formula(
         5,
         row,
-        row == firstRow
-            ? ref(4, row)
-            : '${ref(5, row - 1)}+${ref(4, row)}',
+        row == firstRow ? ref(4, row) : '${ref(5, row - 1)}+${ref(4, row)}',
         style: money,
       );
       if (r.note.isNotEmpty) put(6, row, TextCellValue(r.note));

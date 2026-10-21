@@ -29,6 +29,7 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
   final _storeCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
   final _memoCtrl = TextEditingController();
+  final _eventCtrl = TextEditingController();
   final _dateFmt = DateFormat('yyyy/MM/dd');
 
   late EntryKind _kind;
@@ -40,6 +41,7 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
   // 本件を除く既存データの集計（入力中の残高見込みに使用）
   int _baseIncome = 0;
   int _baseExpense = 0;
+  List<String> _knownEvents = [];
   final _numFmt = NumberFormat('#,##0', 'ja_JP');
 
   bool get _isEdit => widget.receipt != null;
@@ -56,6 +58,7 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
       _storeCtrl.text = r.storeName;
       _amountCtrl.text = r.amount.toString();
       _memoCtrl.text = r.memo;
+      _eventCtrl.text = r.event;
       _date = r.date;
       _category = r.category;
     } else {
@@ -71,10 +74,15 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
     final all = await ReceiptStore.loadAll();
     final others = all.where((e) => e.id != widget.receipt?.id).toList();
     final summary = LedgerSummary.from(others);
+    final events = {
+      for (final e in all)
+        if (e.event.isNotEmpty) e.event,
+    }.toList()..sort();
     if (!mounted) return;
     setState(() {
       _baseIncome = summary.income;
       _baseExpense = summary.expense;
+      _knownEvents = events;
     });
   }
 
@@ -83,6 +91,7 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
     _storeCtrl.dispose();
     _amountCtrl.dispose();
     _memoCtrl.dispose();
+    _eventCtrl.dispose();
     super.dispose();
   }
 
@@ -137,6 +146,7 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
         amount: int.parse(_amountCtrl.text.replaceAll(',', '')),
         category: _category,
         memo: _memoCtrl.text.trim(),
+        event: _eventCtrl.text.trim(),
         createdAt: widget.receipt?.createdAt,
       );
       await ReceiptStore.upsert(receipt);
@@ -242,6 +252,8 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
                 onChanged: (v) => setState(() => _category = v ?? _category),
               ),
               const SizedBox(height: 12),
+              _buildEventField(),
+              const SizedBox(height: 12),
               TextFormField(
                 controller: _memoCtrl,
                 maxLines: 2,
@@ -260,6 +272,52 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  /// イベント名（任意）：既存のイベント名を候補として表示
+  Widget _buildEventField() {
+    return RawAutocomplete<String>(
+      textEditingController: _eventCtrl,
+      optionsBuilder: (value) {
+        final q = value.text.trim();
+        return _knownEvents.where((e) => q.isEmpty || e.contains(q));
+      },
+      onSelected: (v) => _eventCtrl.text = v,
+      fieldViewBuilder: (context, controller, focusNode, onSubmitted) {
+        return TextFormField(
+          controller: controller,
+          focusNode: focusNode,
+          decoration: const InputDecoration(
+            labelText: 'イベント名（任意・例: 25忘年会）',
+            helperText: '入力すると、イベント別の会計報告書に含まれます',
+            border: OutlineInputBorder(),
+          ),
+        );
+      },
+      optionsViewBuilder: (context, onSelected, options) {
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 4,
+            borderRadius: BorderRadius.circular(8),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 200, maxWidth: 360),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final o in options)
+                    ListTile(
+                      dense: true,
+                      title: Text(o),
+                      onTap: () => onSelected(o),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

@@ -4,12 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/member.dart';
+import '../services/cloud_sync_service.dart';
 import '../models/receipt.dart';
 import '../services/ledger_summary.dart';
 import '../services/member_store.dart';
 import '../services/receipt_store.dart';
+import 'event_report_screen.dart';
 import 'receipt_detail_screen.dart';
-import 'cloud_sync_screen.dart';
 import 'member_screen.dart';
 import 'receipt_form_screen.dart';
 import 'report_screen.dart';
@@ -24,8 +25,10 @@ class HomeScreen extends StatefulWidget {
 
 enum _Filter { all, expense, income }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<Receipt> _entries = [];
+  bool _syncing = false;
+  DateTime? _lastAutoSync;
   List<Member> _members = [];
   bool _loading = true;
   _Filter _filter = _Filter.all;
@@ -35,7 +38,65 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _reload();
+    _autoSync();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// アプリを前面に戻したときも自動同期（直近の同期から5分以上経っている場合のみ）
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _autoSync();
+  }
+
+  /// 起動時・復帰時の自動同期。失敗しても黙って続行（オフラインでも使えるように）
+  Future<void> _autoSync() async {
+    if (!CloudSyncService.isConfigured) return;
+    final last = _lastAutoSync;
+    if (last != null && DateTime.now().difference(last).inMinutes < 5) return;
+    _lastAutoSync = DateTime.now();
+    await _runSync(showMessage: false);
+  }
+
+  /// 同期ボタン（手動）。結果を必ず表示する
+  Future<void> _manualSync() {
+    if (!CloudSyncService.isConfigured) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('同期先が未設定です。アプリの設定を確認してください。')),
+        );
+      return Future.value();
+    }
+    return _runSync(showMessage: true);
+  }
+
+  Future<void> _runSync({required bool showMessage}) async {
+    if (_syncing) return;
+    setState(() => _syncing = true);
+    String message;
+    try {
+      final r = await CloudSyncService.sync();
+      message = '同期しました（送信 ${r.sentReceipts}件・受信 ${r.receivedChanges}件）';
+      await _reload();
+    } on CloudSyncException catch (e) {
+      message = e.message;
+    } catch (_) {
+      message = '同期できませんでした。通信状態を確認してください。';
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+    if (showMessage && mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   Future<void> _reload() async {
@@ -47,13 +108,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _members = members;
       _loading = false;
     });
-  }
-
-  Future<void> _openSync() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const CloudSyncScreen()));
-    _reload();
   }
 
   Future<void> _openMembers() async {
@@ -75,6 +129,12 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(builder: (_) => ReceiptDetailScreen(receipt: r)),
     );
     if (changed == true) _reload();
+  }
+
+  Future<void> _openEventReport() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => EventReportScreen(entries: _entries)),
+    );
   }
 
   Future<void> _openReport() async {
@@ -109,14 +169,27 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: _openMembers,
           ),
           IconButton(
-            tooltip: '会員同期',
-            icon: const Icon(Icons.sync),
-            onPressed: _openSync,
+            tooltip: '同期',
+            icon: _syncing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.sync),
+            onPressed: _syncing ? null : _manualSync,
           ),
-          IconButton(
-            tooltip: '会計報告書を作成',
+          PopupMenuButton<String>(
+            tooltip: '会計報告書',
             icon: const Icon(Icons.summarize),
-            onPressed: _entries.isEmpty ? null : _openReport,
+            onSelected: (v) {
+              if (v == 'annual') _openReport();
+              if (v == 'event') _openEventReport();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'annual', child: Text('年間の収支報告書')),
+              PopupMenuItem(value: 'event', child: Text('イベント別の会計報告書')),
+            ],
           ),
         ],
       ),

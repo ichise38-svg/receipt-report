@@ -22,7 +22,8 @@ import 'receipt_store.dart';
 class CloudSyncService {
   /// 共有先（Apps Script のウェブアプリURL）。全員この値で自動接続します。
   /// デプロイ後に https://script.google.com/macros/s/.../exec を設定してください。
-  static const String fixedEndpoint = 'https://script.google.com/macros/s/REPLACE_WITH_DEPLOY_ID/exec';
+  static const String fixedEndpoint =
+      'https://script.google.com/macros/s/REPLACE_WITH_DEPLOY_ID/exec';
 
   static const _lastSyncKey = 'cloud_last_sync';
   static const _cursorKey = 'cloud_sync_cursor';
@@ -33,6 +34,10 @@ class CloudSyncService {
   static const int jpegQuality = 80;
 
   static Future<String> getEndpoint() async => fixedEndpoint;
+
+  /// 同期先が設定済みか（プレースホルダーのままなら false）
+  static bool get isConfigured =>
+      !fixedEndpoint.contains('REPLACE_WITH_DEPLOY_ID');
 
   static Future<DateTime?> lastSyncedAt() async {
     final prefs = await SharedPreferences.getInstance();
@@ -75,6 +80,7 @@ class CloudSyncService {
         'updatedAt': isoMillis(r.updatedAt),
         'deleted': r.deleted,
         'imageUrl': r.imageUrl,
+        'event': r.event,
         'imageBase64': null,
         'imageMimeType': null,
       };

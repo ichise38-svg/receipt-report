@@ -28,7 +28,7 @@ const IMAGE_FOLDER = '収支レシート画像';
 
 const DETAIL_HEADERS = [
   'ID', '区分', '日付', '店舗・摘要', 'カテゴリ', '金額（円）', 'メモ',
-  '画像URL', '更新ms', '削除', '同期ms', 'データ',
+  '画像URL', '更新ms', '削除', '同期ms', 'データ', 'イベント',
 ];
 const MEMBER_HEADERS = ['ID', '氏名', 'メモ', '更新ms', '削除', '同期ms', 'データ'];
 
@@ -112,6 +112,7 @@ function sync_(data) {
       r.deleted ? '削除' : '',
       now,
       JSON.stringify(stored),
+      r.event || '',
     ];
     if (rowNo) {
       rSheet.getRange(rowNo, 1, 1, row.length).setValues([row]);

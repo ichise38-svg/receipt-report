@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../models/receipt.dart';
 import 'annual_report.dart';
+import 'event_report.dart';
 
 final _currency = NumberFormat('#,##0', 'ja_JP');
 final _dateFmt = DateFormat('yyyy/MM/dd');
@@ -142,10 +143,15 @@ class ExportService {
               6: pw.FlexColumnWidth(2),
             },
             children: [
-              _tableRow(
-                const ['月日', '摘要', '収入', '支出', '収支', '残高', '備考'],
-                header: true,
-              ),
+              _tableRow(const [
+                '月日',
+                '摘要',
+                '収入',
+                '支出',
+                '収支',
+                '残高',
+                '備考',
+              ], header: true),
               for (var i = 0; i < rows.length; i++)
                 _tableRow([
                   rows[i].date == null ? '' : _dateFmt.format(rows[i].date!),
@@ -275,6 +281,153 @@ class ExportService {
           ),
         ],
         subject: '収支報告書 $title',
+      ),
+    );
+  }
+
+  /// イベント別会計報告書（25忘年会・旅行と同じ並び）をPDFで共有
+  static Future<void> shareEventReport({
+    required String eventName,
+    required List<Receipt> receipts,
+    required int participants,
+  }) async {
+    final report = EventReport.build(receipts, eventName);
+    final font = await _loadJapaneseFont();
+    final theme = pw.ThemeData.withFont(base: font, bold: font);
+    final doc = pw.Document();
+
+    final period = report.firstDate == null
+        ? ''
+        : report.firstDate == report.lastDate
+        ? _dateFmt.format(report.firstDate!)
+        : '${_dateFmt.format(report.firstDate!)} 〜 ${_dateFmt.format(report.lastDate!)}';
+
+    String money(int v) => '¥ ${_currency.format(v)}';
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        theme: theme,
+        margin: const pw.EdgeInsets.all(32),
+        build: (ctx) => [
+          pw.Text(
+            '${report.eventName}　会計報告書',
+            style: const pw.TextStyle(fontSize: 16),
+          ),
+          pw.SizedBox(height: 2),
+          pw.Text(period, style: const pw.TextStyle(fontSize: 10)),
+          pw.SizedBox(height: 12),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('収入総計', style: const pw.TextStyle(fontSize: 11)),
+              pw.Text(
+                money(report.incomeTotal),
+                style: const pw.TextStyle(fontSize: 11),
+              ),
+            ],
+          ),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('支出総計', style: const pw.TextStyle(fontSize: 11)),
+              pw.Text(
+                money(report.expenseTotal),
+                style: const pw.TextStyle(fontSize: 11),
+              ),
+            ],
+          ),
+          pw.Divider(color: PdfColors.grey500),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                '差引金額（一般会計より支出）',
+                style: pw.TextStyle(
+                  fontSize: 11,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.Text(
+                money(report.balance),
+                style: pw.TextStyle(
+                  fontSize: 11,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 14),
+          pw.Text(
+            '※収入の部',
+            style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 4),
+          _table(
+            headers: ['項目', '金額（円）'],
+            rows: [
+              for (final l in report.incomeLines)
+                [l.label, _currency.format(l.amount)],
+              if (report.incomeLines.isEmpty) ['（収入なし）', ''],
+              ['合計', _currency.format(report.incomeTotal)],
+            ],
+            rightAlignCols: const {1},
+          ),
+          pw.SizedBox(height: 14),
+          pw.Text(
+            '※支出の部',
+            style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 4),
+          _table(
+            headers: ['日付', '店舗・摘要', '内容', '金額（円）'],
+            rows: [
+              for (final r in report.entries.where((r) => !r.isIncome))
+                [
+                  _dateFmt.format(r.date),
+                  r.storeName,
+                  [r.category, if (r.memo.isNotEmpty) r.memo].join('／'),
+                  _currency.format(r.amount),
+                ],
+              if (report.expenseLines.isEmpty) ['', '（支出なし）', '', ''],
+              ['', '合計', '', _currency.format(report.expenseTotal)],
+            ],
+            rightAlignCols: const {3},
+          ),
+          pw.SizedBox(height: 14),
+          pw.Text(
+            '参加者：$participants名',
+            style: const pw.TextStyle(fontSize: 11),
+          ),
+          pw.SizedBox(height: 24),
+          pw.Text('上記の通り報告します', style: const pw.TextStyle(fontSize: 11)),
+          pw.SizedBox(height: 16),
+          pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: pw.Text(
+              '報告者　　　　　　　　',
+              style: const pw.TextStyle(fontSize: 11),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final safeName = report.eventName.replaceAll(
+      RegExp(r'[\\/:*?"<>|\s]'),
+      '_',
+    );
+    final pdfBytes = await doc.save();
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [
+          XFile.fromData(
+            pdfBytes,
+            mimeType: 'application/pdf',
+            name: '会計報告書_$safeName.pdf',
+          ),
+        ],
+        subject: '会計報告書 ${report.eventName}',
       ),
     );
   }

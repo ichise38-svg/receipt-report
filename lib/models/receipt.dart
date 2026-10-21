@@ -65,6 +65,7 @@ class Receipt {
   final DateTime updatedAt;
   final bool deleted;
   final String imageUrl;
+  final String event; // イベント名（任意）。例: 25忘年会。空なら通常の年間集計のみ
 
   Receipt({
     String? id,
@@ -79,6 +80,7 @@ class Receipt {
     DateTime? updatedAt,
     this.deleted = false,
     this.imageUrl = '',
+    this.event = '',
   }) : id = id ?? const Uuid().v4(),
        createdAt = createdAt ?? DateTime.now(),
        updatedAt = updatedAt ?? DateTime.now();
@@ -96,6 +98,7 @@ class Receipt {
     DateTime? updatedAt,
     bool? deleted,
     String? imageUrl,
+    String? event,
   }) {
     return Receipt(
       id: id,
@@ -110,6 +113,7 @@ class Receipt {
       updatedAt: updatedAt ?? this.updatedAt,
       deleted: deleted ?? this.deleted,
       imageUrl: imageUrl ?? this.imageUrl,
+      event: event ?? this.event,
     );
   }
 
@@ -126,6 +130,7 @@ class Receipt {
     'updatedAt': isoMillis(updatedAt),
     'deleted': deleted,
     'imageUrl': imageUrl,
+    'event': event,
   };
 
   factory Receipt.fromJson(Map<String, dynamic> json) {
@@ -145,6 +150,7 @@ class Receipt {
           DateTime.tryParse(json['updatedAt'] as String? ?? '') ?? createdAt,
       deleted: json['deleted'] as bool? ?? false,
       imageUrl: json['imageUrl'] as String? ?? '',
+      event: json['event'] as String? ?? '',
     );
   }
 }

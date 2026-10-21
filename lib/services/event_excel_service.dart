@@ -1,0 +1,209 @@
+import 'dart:typed_data';
+
+import 'package:excel/excel.dart';
+import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
+
+import '../models/receipt.dart';
+import 'event_report.dart';
+
+/// イベント別会計報告書を Excel(.xlsx) で書き出す
+///
+/// 1シート構成。小計・差引は数式で計算します。
+class EventExcelService {
+  static final _dateFmt = DateFormat('yyyy/MM/dd');
+
+  static List<int> buildWorkbook({
+    required String eventName,
+    required List<Receipt> entries,
+    required int participants,
+  }) {
+    final report = EventReport.build(entries, eventName);
+    final excel = Excel.createExcel();
+    final sheet = excel['会計報告書'];
+    excel.delete('Sheet1');
+
+    final bold = CellStyle(bold: true);
+    final title = CellStyle(bold: true, fontSize: 16);
+    final header = CellStyle(
+      bold: true,
+      backgroundColorHex: ExcelColor.fromHexString('FFE3F2FD'),
+      horizontalAlign: HorizontalAlign.Center,
+    );
+    final money = CellStyle(
+      horizontalAlign: HorizontalAlign.Right,
+      numberFormat: NumFormat.standard_3,
+    );
+    final moneyBold = CellStyle(
+      bold: true,
+      horizontalAlign: HorizontalAlign.Right,
+      numberFormat: NumFormat.standard_3,
+    );
+
+    void text(int col, int row, String v, {CellStyle? style}) {
+      final cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row),
+      );
+      cell.value = TextCellValue(v);
+      if (style != null) cell.cellStyle = style;
+    }
+
+    void num(int col, int row, int v, {CellStyle? style}) {
+      final cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row),
+      );
+      cell.value = IntCellValue(v);
+      if (style != null) cell.cellStyle = style;
+    }
+
+    void formula(int col, int row, String f, {CellStyle? style}) {
+      final cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row),
+      );
+      cell.value = FormulaCellValue(f);
+      if (style != null) cell.cellStyle = style;
+    }
+
+    String ref(int col, int row) => '${'ABCDEFG'[col]}${row + 1}';
+
+    // ---------- 見出し ----------
+    text(0, 0, '${report.eventName}　会計報告書', style: title);
+    if (report.firstDate != null) {
+      final period = report.firstDate == report.lastDate
+          ? _dateFmt.format(report.firstDate!)
+          : '${_dateFmt.format(report.firstDate!)} 〜 ${_dateFmt.format(report.lastDate!)}';
+      text(0, 1, '期間: $period');
+    }
+
+    // ---------- 収入の部 ----------
+    var row = 3;
+    text(0, row, '※収入の部', style: bold);
+    row++;
+    text(0, row, '項目', style: header);
+    text(1, row, '金額（円）', style: header);
+    row++;
+    final incomeFirst = row;
+    for (final l in report.incomeLines) {
+      text(0, row, l.label);
+      num(1, row, l.amount, style: money);
+      row++;
+    }
+    if (report.incomeLines.isEmpty) {
+      text(0, row, '（収入なし）');
+      row++;
+    }
+    final incomeLast = row - 1;
+    final incomeSumRow = row;
+    text(0, incomeSumRow, '収入合計', style: bold);
+    if (report.incomeLines.isEmpty) {
+      num(1, incomeSumRow, 0, style: moneyBold);
+    } else {
+      formula(
+        1,
+        incomeSumRow,
+        'SUM(${ref(1, incomeFirst)}:${ref(1, incomeLast)})',
+        style: moneyBold,
+      );
+    }
+    row += 2;
+
+    // ---------- 支出の部 ----------
+    text(0, row, '※支出の部', style: bold);
+    row++;
+    for (var c = 0; c < 4; c++) {
+      text(c, row, ['日付', '店舗・摘要', '内容', '金額（円）'][c], style: header);
+    }
+    row++;
+    final expenseFirst = row;
+    for (final r in report.entries.where((r) => !r.isIncome)) {
+      text(0, row, _dateFmt.format(r.date));
+      text(1, row, r.storeName);
+      text(2, row, [r.category, if (r.memo.isNotEmpty) r.memo].join('／'));
+      num(3, row, r.amount, style: money);
+      row++;
+    }
+    if (report.expenseLines.isEmpty) {
+      text(1, row, '（支出なし）');
+      row++;
+    }
+    final expenseLast = row - 1;
+    final expenseSumRow = row;
+    text(1, expenseSumRow, '支出合計', style: bold);
+    if (report.expenseLines.isEmpty) {
+      num(3, expenseSumRow, 0, style: moneyBold);
+    } else {
+      formula(
+        3,
+        expenseSumRow,
+        'SUM(${ref(3, expenseFirst)}:${ref(3, expenseLast)})',
+        style: moneyBold,
+      );
+    }
+    row += 2;
+
+    // ---------- 総計 ----------
+    text(0, row, '収入総計');
+    formula(1, row, ref(1, incomeSumRow), style: money);
+    final incomeTotalRow = row;
+    row++;
+    text(0, row, '支出総計');
+    formula(1, row, ref(3, expenseSumRow), style: money);
+    final expenseTotalRow = row;
+    row++;
+    text(0, row, '差引金額（一般会計より支出）', style: bold);
+    formula(
+      1,
+      row,
+      '${ref(1, incomeTotalRow)}-${ref(1, expenseTotalRow)}',
+      style: moneyBold,
+    );
+    row += 2;
+
+    text(0, row, '参加者（名）');
+    num(1, row, participants, style: money);
+    row += 2;
+    text(0, row, '上記の通り報告します');
+    row += 2;
+    text(2, row, '報告者');
+
+    sheet.setColumnWidth(0, 22);
+    sheet.setColumnWidth(1, 26);
+    sheet.setColumnWidth(2, 26);
+    sheet.setColumnWidth(3, 16);
+
+    final bytes = excel.encode();
+    if (bytes == null) {
+      throw Exception('Excelの作成に失敗しました');
+    }
+    return bytes;
+  }
+
+  static Future<void> shareWorkbook({
+    required String eventName,
+    required List<Receipt> entries,
+    required int participants,
+  }) async {
+    final bytes = buildWorkbook(
+      eventName: eventName,
+      entries: entries,
+      participants: participants,
+    );
+    final safeName = eventName.trim().replaceAll(
+      RegExp(r'[\\/:*?"<>|\s]'),
+      '_',
+    );
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [
+          XFile.fromData(
+            Uint8List.fromList(bytes),
+            name: '会計報告書_$safeName.xlsx',
+            mimeType:
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          ),
+        ],
+        subject: '会計報告書 $eventName',
+      ),
+    );
+  }
+}
