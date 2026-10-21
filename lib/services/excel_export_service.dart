@@ -41,6 +41,8 @@ class ExcelExportService {
       entries,
       carryCash: carryCash,
       carryBank: carryBank,
+      from: from,
+      to: to,
     );
     const sheetName = '収支報告書';
     final excel = Excel.createExcel();

@@ -45,6 +45,10 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
   List<LayoutRow> _rows = [];
   String _mainTitle = AppSettings.defaultMainTitle;
   int _participants = 0;
+  // 年間報告の対象期間（既定は今年の 1/1〜12/31 で完結）
+  late DateTime _periodFrom = DateTime(DateTime.now().year, 1, 1);
+  late DateTime _periodTo = DateTime(DateTime.now().year, 12, 31);
+  final _dateFmt = DateFormat('yyyy/MM/dd');
   int? _selectedRow;
   int? _selectedCol;
   final _hScroll = ScrollController();
@@ -102,6 +106,8 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
               carryCash: _parseYen(_carryCashCtrl),
               carryBank: _parseYen(_carryBankCtrl),
               participants: _participants,
+              from: _periodFrom,
+              to: _periodTo,
             )
           : (_eventName == null
                 ? <LayoutRow>[]
@@ -112,6 +118,25 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
                     mainTitle: _mainTitle,
                   ));
     });
+  }
+
+  Future<void> _pickPeriod(bool isFrom) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: isFrom ? _periodFrom : _periodTo,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      locale: const Locale('ja'),
+    );
+    if (picked == null) return;
+    setState(() {
+      if (isFrom) {
+        _periodFrom = picked;
+      } else {
+        _periodTo = picked;
+      }
+    });
+    _rebuild(_entries);
   }
 
   void _setMode(_ViewMode m) {
@@ -245,6 +270,30 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
             style: const TextStyle(fontSize: 12),
           ),
           if (annual) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => _pickPeriod(true),
+                    child: Text(
+                      '開始 ${_dateFmt.format(_periodFrom)}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => _pickPeriod(false),
+                    child: Text(
+                      '終了 ${_dateFmt.format(_periodTo)}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 6),
             Row(
               children: [

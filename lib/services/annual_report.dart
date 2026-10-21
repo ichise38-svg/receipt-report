@@ -36,12 +36,16 @@ class AnnualReport {
     required this.dataRows,
   });
 
+  /// [from]〜[to]（両端を含む日付）の明細だけを集計します。
+  /// 年間報告は 1/1〜12/31 を指定して、年度内で完結させます。
   factory AnnualReport.build(
     List<Receipt> entries, {
     int carryCash = 0,
     int carryBank = 0,
+    DateTime? from,
+    DateTime? to,
   }) {
-    final sorted = [...entries]..sort((a, b) => a.date.compareTo(b.date));
+    final sorted = filterSorted(entries, from: from, to: to);
     final data = sorted
         .map(
           (r) => AnnualReportRow(
@@ -70,6 +74,26 @@ class AnnualReport {
       ],
       dataRows: data,
     );
+  }
+
+  /// 期間内の明細を日付順に返す（from/to が null の側は無制限）
+  static List<Receipt> filterSorted(
+    List<Receipt> entries, {
+    DateTime? from,
+    DateTime? to,
+  }) {
+    final start = from == null
+        ? null
+        : DateTime(from.year, from.month, from.day);
+    final end = to == null
+        ? null
+        : DateTime(to.year, to.month, to.day, 23, 59, 59);
+    final target = entries.where((r) {
+      if (start != null && r.date.isBefore(start)) return false;
+      if (end != null && r.date.isAfter(end)) return false;
+      return true;
+    }).toList();
+    return target..sort((a, b) => a.date.compareTo(b.date));
   }
 
   /// 表示順の全行（繰越 ＋ 明細）

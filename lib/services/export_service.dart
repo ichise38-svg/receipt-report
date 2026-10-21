@@ -106,6 +106,8 @@ class ExportService {
       receipts,
       carryCash: carryCash,
       carryBank: carryBank,
+      from: from,
+      to: to,
     );
     final balances = report.runningBalances;
     final rows = report.rows;

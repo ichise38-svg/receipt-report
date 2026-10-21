@@ -59,13 +59,17 @@ class AnnualLayout {
     required int carryCash,
     required int carryBank,
     required int participants,
+    DateTime? from,
+    DateTime? to,
   }) {
     final report = AnnualReport.build(
       entries,
       carryCash: carryCash,
       carryBank: carryBank,
+      from: from,
+      to: to,
     );
-    final sorted = [...entries]..sort((a, b) => a.date.compareTo(b.date));
+    final sorted = AnnualReport.filterSorted(entries, from: from, to: to);
     final result = <LayoutRow>[
       LayoutRow(
         row: headerRow,

@@ -42,10 +42,10 @@ class _ReportScreenState extends State<ReportScreen> {
     AppSettings.getMainTitle().then((t) {
       if (mounted) setState(() => _mainTitle = t);
     });
-    final now = DateTime.now();
-    final dates = widget.entries.map((r) => r.date).toList()..sort();
-    _from = dates.isEmpty ? DateTime(now.year, now.month, 1) : dates.first;
-    _to = dates.isEmpty ? now : dates.last;
+    // 年間報告は 1/1〜12/31 で完結させる（既定は今年度）
+    final year = DateTime.now().year;
+    _from = DateTime(year, 1, 1);
+    _to = DateTime(year, 12, 31);
   }
 
   @override
