@@ -10,20 +10,29 @@ class Member {
   final DateTime updatedAt;
   final bool deleted;
 
+  /// イベント名 → 参加したかどうか。未登録のイベントは「参加」として扱う。
+  final Map<String, bool> eventAttendance;
+
   Member({
     String? id,
     required this.name,
     this.note = '',
     DateTime? updatedAt,
     this.deleted = false,
+    Map<String, bool>? eventAttendance,
   }) : id = id ?? const Uuid().v4(),
-       updatedAt = updatedAt ?? DateTime.now();
+       updatedAt = updatedAt ?? DateTime.now(),
+       eventAttendance = Map.unmodifiable(eventAttendance ?? const {});
+
+  /// そのイベントに参加者として数えるか（未設定は参加）
+  bool attendsEvent(String eventName) => eventAttendance[eventName] ?? true;
 
   Member copyWith({
     String? name,
     String? note,
     DateTime? updatedAt,
     bool? deleted,
+    Map<String, bool>? eventAttendance,
   }) {
     return Member(
       id: id,
@@ -31,6 +40,7 @@ class Member {
       note: note ?? this.note,
       updatedAt: updatedAt ?? this.updatedAt,
       deleted: deleted ?? this.deleted,
+      eventAttendance: eventAttendance ?? this.eventAttendance,
     );
   }
 
@@ -40,6 +50,7 @@ class Member {
     'note': note,
     'updatedAt': isoMillis(updatedAt),
     'deleted': deleted,
+    'eventAttendance': eventAttendance,
   };
 
   factory Member.fromJson(Map<String, dynamic> json) => Member(
@@ -48,5 +59,14 @@ class Member {
     note: json['note'] as String? ?? '',
     updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? ''),
     deleted: json['deleted'] as bool? ?? false,
+    eventAttendance: _parseAttendance(json['eventAttendance']),
   );
+
+  static Map<String, bool> _parseAttendance(Object? raw) {
+    if (raw is! Map) return {};
+    return {
+      for (final e in raw.entries)
+        if (e.value is bool) e.key.toString(): e.value as bool,
+    };
+  }
 }

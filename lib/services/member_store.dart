@@ -70,6 +70,28 @@ class MemberStore {
     return added;
   }
 
+  /// イベントごとの参加状況をまとめて保存する（変更があった人だけ updatedAt を更新）
+  /// [attendance] は 会員ID → 参加したか。含まれない会員は変更しない。
+  static Future<void> setEventAttendance({
+    required String eventName,
+    required Map<String, bool> attendance,
+  }) async {
+    final all = await loadRaw();
+    final now = DateTime.now();
+    final updated = all.map((m) {
+      if (m.deleted || !attendance.containsKey(m.id)) return m;
+      final value = attendance[m.id]!;
+      if (m.attendsEvent(eventName) == value &&
+          m.eventAttendance.containsKey(eventName)) {
+        return m;
+      }
+      final map = Map<String, bool>.of(m.eventAttendance)
+        ..[eventName] = value;
+      return m.copyWith(eventAttendance: map, updatedAt: now);
+    }).toList();
+    await _saveRaw(updated);
+  }
+
   /// 全員分を削除（tombstone にして同期で反映）
   static Future<void> clearAll() async {
     final all = await loadRaw();

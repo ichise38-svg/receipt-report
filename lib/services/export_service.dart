@@ -299,6 +299,7 @@ class ExportService {
     required String eventName,
     required List<Receipt> receipts,
     required int participants,
+    List<String> participantNames = const [],
   }) async {
     final report = EventReport.build(receipts, eventName);
     final font = await _loadJapaneseFont();
@@ -411,6 +412,13 @@ class ExportService {
             '参加者：$participants名',
             style: const pw.TextStyle(fontSize: 11),
           ),
+          if (participantNames.isNotEmpty) ...[
+            pw.SizedBox(height: 6),
+            pw.Text(
+              participantNames.join('、'),
+              style: const pw.TextStyle(fontSize: 10),
+            ),
+          ],
           pw.SizedBox(height: 24),
           pw.Text('上記の通り報告します', style: const pw.TextStyle(fontSize: 11)),
           pw.SizedBox(height: 16),

@@ -6,6 +6,7 @@ import '../services/app_settings.dart';
 import '../services/event_excel_service.dart';
 import '../services/event_report.dart';
 import '../services/export_service.dart';
+import '../models/member.dart';
 import '../services/member_store.dart';
 
 /// イベント別会計報告書：イベントを選んで PDF / Excel で出力
@@ -22,7 +23,7 @@ class _EventReportScreenState extends State<EventReportScreen> {
   final _currency = NumberFormat('#,##0', 'ja_JP');
   final _dateFmt = DateFormat('yyyy/MM/dd');
   String? _selected;
-  int _participants = 0;
+  List<Member> _roster = [];
   String _mainTitle = AppSettings.defaultMainTitle;
   bool _busy = false;
 
@@ -31,12 +32,37 @@ class _EventReportScreenState extends State<EventReportScreen> {
     super.initState();
     final events = _eventNames;
     if (events.isNotEmpty) _selected = events.first;
-    MemberStore.loadAll().then((m) {
-      if (mounted) setState(() => _participants = m.length);
-    });
+    _loadRoster();
     AppSettings.getMainTitle().then((t) {
       if (mounted) setState(() => _mainTitle = t);
     });
+  }
+
+  Future<void> _loadRoster() async {
+    final m = await MemberStore.loadAll();
+    if (mounted) setState(() => _roster = m);
+  }
+
+  /// 選択中イベントに参加した会員（チェックが付いている人）
+  List<Member> get _attendees {
+    final name = _selected;
+    if (name == null) return const [];
+    return _roster.where((m) => m.attendsEvent(name)).toList();
+  }
+
+  int get _participants => _attendees.length;
+
+  List<String> get _participantNames => [for (final m in _attendees) m.name];
+
+  /// チェック状態を保存（変更した会員だけ更新日時が変わり、同期で共有される）
+  Future<void> _setAttendance(Member member, bool value) async {
+    final name = _selected;
+    if (name == null) return;
+    await MemberStore.setEventAttendance(
+      eventName: name,
+      attendance: {member.id: value},
+    );
+    await _loadRoster();
   }
 
   /// イベント名の一覧（新しい登録があるものを上に）
@@ -64,6 +90,7 @@ class _EventReportScreenState extends State<EventReportScreen> {
           eventName: name,
           entries: widget.entries,
           participants: _participants,
+          participantNames: _participantNames,
         );
       } else {
         await ExportService.shareEventReport(
@@ -71,6 +98,7 @@ class _EventReportScreenState extends State<EventReportScreen> {
           eventName: name,
           receipts: widget.entries,
           participants: _participants,
+          participantNames: _participantNames,
         );
       }
     } catch (_) {
@@ -119,6 +147,8 @@ class _EventReportScreenState extends State<EventReportScreen> {
                     ],
                     onChanged: (v) => setState(() => _selected = v),
                   ),
+                  const SizedBox(height: 12),
+                  if (_selected != null) _buildAttendance(),
                   const SizedBox(height: 12),
                   if (report != null) ...[
                     Card(
@@ -180,6 +210,42 @@ class _EventReportScreenState extends State<EventReportScreen> {
                 ),
               ),
             ),
+    );
+  }
+
+  Widget _buildAttendance() {
+    final name = _selected!;
+    final activeRoster = _roster;
+    return Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text(
+              '参加者（$_participants名 / 名簿${activeRoster.length}名）',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          if (activeRoster.isEmpty)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Text(
+                '名簿が未登録です。「参加者名簿」で登録すると、ここで選べます。',
+                style: TextStyle(fontSize: 12),
+              ),
+            )
+          else
+            for (final m in activeRoster)
+              CheckboxListTile(
+                dense: true,
+                title: Text(m.name),
+                subtitle: m.note.isEmpty ? null : Text(m.note),
+                value: m.attendsEvent(name),
+                onChanged: (v) => _setAttendance(m, v ?? true),
+              ),
+        ],
+      ),
     );
   }
 

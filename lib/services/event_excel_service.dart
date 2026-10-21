@@ -24,6 +24,7 @@ class EventExcelService {
     required String eventName,
     required List<Receipt> entries,
     required int participants,
+    List<String> participantNames = const [],
   }) {
     final report = EventReport.build(entries, eventName);
     const sheetName = '会計報告書';
@@ -180,7 +181,17 @@ class EventExcelService {
 
     text(0, row, '参加者（名）');
     num(1, row, participants, style: money);
-    row += 2;
+    row += 1;
+    if (participantNames.isNotEmpty) {
+      text(0, row, '参加者名簿');
+      row++;
+      for (var i = 0; i < participantNames.length; i++) {
+        text(0, row, '${i + 1}');
+        text(1, row, participantNames[i]);
+        row++;
+      }
+    }
+    row += 1;
     text(0, row, '上記の通り報告します');
     row += 2;
     text(2, row, '報告者');
@@ -202,12 +213,14 @@ class EventExcelService {
     required String eventName,
     required List<Receipt> entries,
     required int participants,
+    List<String> participantNames = const [],
   }) async {
     final bytes = buildWorkbook(
       mainTitle: mainTitle,
       eventName: eventName,
       entries: entries,
       participants: participants,
+      participantNames: participantNames,
     );
     await SharePlus.instance.share(
       ShareParams(
