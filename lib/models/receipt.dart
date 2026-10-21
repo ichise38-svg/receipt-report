@@ -47,6 +47,21 @@ enum EntryKind {
       name == 'income' ? EntryKind.income : EntryKind.expense;
 }
 
+/// 支払方法（支出のみ使用。収入は現金扱いで保存）
+///
+/// デビットカードは即時引き落としのため、購入日＝口座の出金日として照合する。
+enum PaymentMethod {
+  cash('現金'),
+  bank('口座・デビット');
+
+  final String label;
+  const PaymentMethod(this.label);
+
+  /// 既存データ（項目なし）は現金として扱う
+  static PaymentMethod fromName(String? name) =>
+      name == 'bank' ? PaymentMethod.bank : PaymentMethod.cash;
+}
+
 /// 収支1件分のデータ（支出はレシート画像あり、収入は画像なしも可）
 ///
 /// - 削除は tombstone（deleted = true）として残し、同期時に他の端末へ削除を伝えます。
@@ -66,6 +81,7 @@ class Receipt {
   final bool deleted;
   final String imageUrl;
   final String event; // イベント名（任意）。例: 25忘年会。空なら通常の年間集計のみ
+  final PaymentMethod payment; // 支払方法（支出のみ使用。既定は現金）
 
   Receipt({
     String? id,
@@ -81,6 +97,7 @@ class Receipt {
     this.deleted = false,
     this.imageUrl = '',
     this.event = '',
+    this.payment = PaymentMethod.cash,
   }) : id = id ?? const Uuid().v4(),
        createdAt = createdAt ?? DateTime.now(),
        updatedAt = updatedAt ?? DateTime.now();
@@ -99,6 +116,7 @@ class Receipt {
     bool? deleted,
     String? imageUrl,
     String? event,
+    PaymentMethod? payment,
   }) {
     return Receipt(
       id: id,
@@ -114,6 +132,7 @@ class Receipt {
       deleted: deleted ?? this.deleted,
       imageUrl: imageUrl ?? this.imageUrl,
       event: event ?? this.event,
+      payment: payment ?? this.payment,
     );
   }
 
@@ -131,6 +150,7 @@ class Receipt {
     'deleted': deleted,
     'imageUrl': imageUrl,
     'event': event,
+    'payment': payment.name,
   };
 
   factory Receipt.fromJson(Map<String, dynamic> json) {
@@ -151,6 +171,7 @@ class Receipt {
       deleted: json['deleted'] as bool? ?? false,
       imageUrl: json['imageUrl'] as String? ?? '',
       event: json['event'] as String? ?? '',
+      payment: PaymentMethod.fromName(json['payment'] as String?),
     );
   }
 }

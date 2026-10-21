@@ -80,6 +80,7 @@ class CloudSyncService {
         'deleted': r.deleted,
         'imageUrl': r.imageUrl,
         'event': r.event,
+        'payment': r.payment.name,
         'imageBase64': null,
         'imageMimeType': null,
       };

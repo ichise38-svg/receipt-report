@@ -37,7 +37,7 @@ class MergePlan {
 
 /// 同じ内容のレシート・領収書を二重登録しないための判定
 ///
-/// 同一とみなす条件: 区分・年月日・店舗名（前後の空白を除く）・金額がすべて一致。
+/// 同一とみなす条件: 区分・支払方法・年月日・店舗名（前後の空白を除く）・金額がすべて一致。
 /// 削除済み（tombstone）は対象外。
 class ReceiptMerge {
   static bool _sameDay(DateTime a, DateTime b) =>
@@ -49,6 +49,7 @@ class ReceiptMerge {
       if (r.deleted) continue;
       if (r.id == draft.id) continue;
       if (r.kind != draft.kind) continue;
+      if (r.payment != draft.payment) continue;
       if (!_sameDay(r.date, draft.date)) continue;
       if (r.storeName.trim() != name) continue;
       if (r.amount != draft.amount) continue;

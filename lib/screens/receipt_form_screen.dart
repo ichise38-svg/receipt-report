@@ -33,6 +33,7 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
   final _dateFmt = DateFormat('yyyy/MM/dd');
 
   late EntryKind _kind;
+  PaymentMethod _payment = PaymentMethod.cash;
   String? _imagePath; // 保存済みまたは新規撮影の画像パス（収入は null 可）
   DateTime _date = DateTime.now();
   String _category = receiptCategories.first;
@@ -61,6 +62,7 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
       _eventCtrl.text = r.event;
       _date = r.date;
       _category = r.category;
+      _payment = r.payment;
     } else {
       _kind = widget.initialKind;
       _category = _categories.first;
@@ -147,6 +149,7 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
         category: _category,
         memo: _memoCtrl.text.trim(),
         event: _eventCtrl.text.trim(),
+        payment: _kind == EntryKind.expense ? _payment : PaymentMethod.cash,
         createdAt: widget.receipt?.createdAt,
       );
       final outcome = await ReceiptStore.saveMerged(receipt);
@@ -253,6 +256,10 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
                 onChanged: (v) => setState(() => _category = v ?? _category),
               ),
               const SizedBox(height: 12),
+              if (isExpense) ...[
+                _buildPaymentField(),
+                const SizedBox(height: 12),
+              ],
               _buildEventField(),
               const SizedBox(height: 12),
               TextFormField(
@@ -272,6 +279,26 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// 支払方法（支出のみ）：口座・デビットは口座の出納と照合する
+  Widget _buildPaymentField() {
+    return InputDecorator(
+      decoration: const InputDecoration(
+        labelText: '支払方法',
+        helperText: 'デビットカードは「口座・デビット」を選ぶ（口座の出納と照合します）',
+        border: OutlineInputBorder(),
+      ),
+      child: SegmentedButton<PaymentMethod>(
+        showSelectedIcon: false,
+        segments: const [
+          ButtonSegment(value: PaymentMethod.cash, label: Text('現金')),
+          ButtonSegment(value: PaymentMethod.bank, label: Text('口座・デビット')),
+        ],
+        selected: {_payment},
+        onSelectionChanged: (s) => setState(() => _payment = s.first),
       ),
     );
   }

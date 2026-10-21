@@ -21,6 +21,7 @@ import 'settings_screen.dart';
 import '../widgets/quick_entry_panel.dart';
 import '../services/event_report.dart';
 import '../services/receipt_merge.dart';
+import 'bank_ledger_screen.dart';
 
 /// ホーム：収支一覧（残高サマリー付き）
 class HomeScreen extends StatefulWidget {
@@ -128,6 +129,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
+  Future<void> _openBankLedger() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const BankLedgerScreen()));
+    _reload();
+  }
+
   Future<void> _openMembers() async {
     await Navigator.of(
       context,
@@ -233,9 +241,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             icon: const Icon(Icons.folder_open),
             onSelected: (v) {
               if (v == 'file') _openLedgerFile();
+              if (v == 'bank') _openBankLedger();
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'file', child: Text('ファイルの新規作成・取り込み')),
+              PopupMenuItem(value: 'bank', child: Text('口座の出納・照合（ATM入出金）')),
             ],
           ),
           PopupMenuButton<String>(
