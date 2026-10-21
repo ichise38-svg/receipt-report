@@ -7,11 +7,12 @@
  * 2. 拡張機能 > Apps Script を開き、このコードを貼り付け
  * 3. デプロイ > 新しいデプロイ > 種類「ウェブアプリ」
  *    - 実行ユーザー: 自分 / アクセスできるユーザー: 全員
- * 4. 発行されたURL（https://script.google.com/.../exec）をアプリの fixedEndpoint に設定
+ * 4. 発行されたURL（https://script.google.com/.../exec）をアプリの「設定」で入力する
  *
  * 保存先:
  * - 「明細」シート: レシート・収入（読みやすい列 ＋ 同期用のデータ列）
  * - 「参加者」シート: 参加者名簿（同期用）
+ * - 「口座出納」シート: 口座の出納（ATM入出金・同期用）
  * - 「収支レシート画像」フォルダ（Googleドライブ）: レシート画像
  *
  * 同期の考え方:
@@ -24,6 +25,7 @@
  */
 const DETAIL_SHEET = '明細';
 const MEMBER_SHEET = '参加者';
+const BANK_SHEET = '口座出納';
 const IMAGE_FOLDER = '収支レシート画像';
 
 const DETAIL_HEADERS = [
@@ -31,12 +33,15 @@ const DETAIL_HEADERS = [
   '画像URL', '更新ms', '削除', '同期ms', 'データ', 'イベント',
 ];
 const MEMBER_HEADERS = ['ID', '氏名', 'メモ', '更新ms', '削除', '同期ms', 'データ'];
+const BANK_HEADERS = ['ID', '日付', '区分', '摘要', '金額（円）', '更新ms', '削除', '同期ms', 'データ'];
 
 // 明細の列番号（1始まり）
 const R_COL = { id: 1, kind: 2, date: 3, store: 4, category: 5, amount: 6, memo: 7,
   imageUrl: 8, updated: 9, deleted: 10, synced: 11, json: 12 };
 // 参加者の列番号（1始まり）
 const M_COL = { id: 1, name: 2, note: 3, updated: 4, deleted: 5, synced: 6, json: 7 };
+// 口座出納の列番号（1始まり）
+const B_COL = { id: 1, date: 2, kind: 3, label: 4, amount: 5, updated: 6, deleted: 7, synced: 8, json: 9 };
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
@@ -64,6 +69,7 @@ function sync_(data) {
   const now = Date.now();
   const rSheet = getSheet_(DETAIL_SHEET, DETAIL_HEADERS);
   const mSheet = getSheet_(MEMBER_SHEET, MEMBER_HEADERS);
+  const bSheet = getSheet_(BANK_SHEET, BANK_HEADERS);
   const haveImages = data.haveImages || {};
   const acceptedIds = {}; // 反映（採用）された明細ID
   const sendBack = {};    // サーバー側が新しいため採用しなかった明細・参加者（端末へ返す）
@@ -181,13 +187,62 @@ function sync_(data) {
     members.push(JSON.parse(String(row[M_COL.json - 1])));
   });
 
+  // --- 口座出納: 送られてきた変更を反映（後勝ち・削除は墓標） ---
+  const bIndex = indexRows_(bSheet, B_COL.id);
+  (data.bankEntries || []).forEach(function (b) {
+    const incomingMs = Date.parse(b.updatedAt) || 0;
+    const rowNo = bIndex[b.id];
+    if (rowNo) {
+      const current = Number(bSheet.getRange(rowNo, B_COL.updated).getValue()) || 0;
+      if (current >= incomingMs) {
+        sendBack[b.id] = true;
+        return;
+      }
+    }
+    const stored = JSON.parse(JSON.stringify(b));
+    const row = [
+      b.id,
+      b.date || '',
+      bankKindLabel_(b.kind),
+      b.label || '',
+      Number(b.amount) || 0,
+      incomingMs,
+      b.deleted ? '削除' : '',
+      now,
+      JSON.stringify(stored),
+    ];
+    if (rowNo) {
+      bSheet.getRange(rowNo, 1, 1, row.length).setValues([row]);
+    } else {
+      bSheet.appendRow(row);
+      bIndex[b.id] = bSheet.getLastRow();
+    }
+  });
+
+  // --- 口座出納: 前回以降に変わった分を返す ---
+  const bankEntries = [];
+  readAllRows_(bSheet, B_COL.json).forEach(function (row) {
+    if (!row[B_COL.id - 1]) return;
+    const synced = Number(row[B_COL.synced - 1]) || 0;
+    if (synced <= since && !sendBack[String(row[B_COL.id - 1])]) return;
+    bankEntries.push(JSON.parse(String(row[B_COL.json - 1])));
+  });
+
   return {
     ok: true,
     receipts: receipts,
     members: members,
+    bankEntries: bankEntries,
     imageUrls: imageUrls,
     serverTime: now,
   };
+}
+
+/** 口座出納の区分を表示用の語にする（端末の kind 名に合わせる） */
+function bankKindLabel_(kind) {
+  if (kind === 'withdraw') return '出金';
+  if (kind === 'cashOut') return '現金引出';
+  return '入金';
 }
 
 function getSheet_(name, headers) {

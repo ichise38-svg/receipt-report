@@ -7,9 +7,11 @@ import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/bank_entry.dart';
 import '../models/member.dart';
 import '../models/receipt.dart';
 import 'app_settings.dart';
+import 'bank_store.dart';
 import 'member_store.dart';
 import 'receipt_store.dart';
 
@@ -104,14 +106,21 @@ class CloudSyncService {
         .map((m) => m.toJson())
         .toList();
 
+    // 口座の出納（ATM入出金）も同じ考え方で送る（削除は tombstone）
+    final bankPayload = (await BankStore.loadRaw())
+        .where((b) => b.updatedAt.isAfter(pushSince))
+        .map(_bankJson)
+        .toList();
+
     final payload = {
-      'schemaVersion': 2,
+      'schemaVersion': 3,
       'action': 'sync',
       'since': since,
       // 端末が保持している画像（ID→共有URL）。サーバーは差分の画像だけ返す
       'haveImages': haveImages,
       'receipts': receiptPayload,
       'members': memberPayload,
+      'bankEntries': bankPayload,
     };
 
     // --- 送受信 ---
@@ -144,6 +153,15 @@ class CloudSyncService {
       }
     }
 
+    // 口座の出納の受信・反映
+    final remoteBank = (data['bankEntries'] as List<dynamic>? ?? const [])
+        .cast<Map<String, dynamic>>();
+    for (final j in remoteBank) {
+      if (await BankStore.applyRemote(BankEntry.fromJson(j))) {
+        received++;
+      }
+    }
+
     // 送信した画像の共有URLを記録
     final urlsRaw = data['imageUrls'] as Map<String, dynamic>? ?? const {};
     await ReceiptStore.setImageUrls(
@@ -155,13 +173,25 @@ class CloudSyncService {
       await prefs.setInt(_cursorKey, serverTime);
     }
     await prefs.setString(_lastSyncKey, DateTime.now().toIso8601String());
-    await prefs.setString(_pushKey, startedAt.toIso8601String());
+    // 旧バージョンの Apps Script は口座の出納を返さない。その場合は送信時刻を進めず、
+    // 次回の同期で口座の出納を再送する（送信内容が失われないように）。
+    final bankAcknowledged = data.containsKey('bankEntries');
+    if (bankAcknowledged || bankPayload.isEmpty) {
+      await prefs.setString(_pushKey, startedAt.toIso8601String());
+    }
 
     return SyncResult(
       sentReceipts: receiptPayload.length,
       sentImages: imagesSent,
       receivedChanges: received,
     );
+  }
+
+  /// 口座の出納1件を送信用の形に変換（日付は yyyy-MM-dd で見やすく）
+  static Map<String, dynamic> _bankJson(BankEntry b) {
+    final m = b.toJson();
+    m['date'] = DateFormat('yyyy-MM-dd').format(b.date);
+    return m;
   }
 
   /// 接続確認（データは送らず、合言葉と疎通のみ確認）
