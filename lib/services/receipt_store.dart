@@ -58,6 +58,14 @@ class ReceiptStore {
     await _saveRaw(all);
   }
 
+  /// ファイル取り込み用：まとめて追加（画像なし）
+  static Future<void> addAll(List<Receipt> receipts) async {
+    if (receipts.isEmpty) return;
+    final all = await loadRaw();
+    all.addAll(receipts);
+    await _saveRaw(all);
+  }
+
   /// 削除（tombstone として残し、同期で全員に反映させる）
   static Future<void> delete(Receipt receipt) async {
     final all = await loadRaw();

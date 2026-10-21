@@ -28,6 +28,7 @@ environment:
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
 dependencies:
+  archive: ^3.6.1          # xlsx の書式修正（読み込み用）
   # Web版ビルド互換のため image を 4.1.x に固定（4.11.x は dart2js で失敗）
   image: ^4.1.2
   flutter:

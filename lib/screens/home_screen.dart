@@ -9,7 +9,9 @@ import '../models/receipt.dart';
 import '../services/ledger_summary.dart';
 import '../services/member_store.dart';
 import '../services/receipt_store.dart';
+import 'chart_screen.dart';
 import 'event_report_screen.dart';
+import 'ledger_file_screen.dart';
 import 'receipt_detail_screen.dart';
 import 'member_screen.dart';
 import 'receipt_form_screen.dart';
@@ -146,6 +148,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _openChart() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ChartScreen()));
+  }
+
+  Future<void> _openLedgerFile() async {
+    final imported = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const LedgerFileScreen()));
+    if (imported == true) _reload();
+  }
+
   Future<void> _openReport() async {
     await Navigator.of(
       context,
@@ -192,6 +207,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   )
                 : const Icon(Icons.sync),
             onPressed: _syncing ? null : _manualSync,
+          ),
+          IconButton(
+            tooltip: '収支グラフ',
+            icon: const Icon(Icons.bar_chart),
+            onPressed: _openChart,
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'ファイル',
+            icon: const Icon(Icons.folder_open),
+            onSelected: (v) {
+              if (v == 'file') _openLedgerFile();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'file', child: Text('ファイルの新規作成・取り込み')),
+            ],
           ),
           PopupMenuButton<String>(
             tooltip: '会計報告書',

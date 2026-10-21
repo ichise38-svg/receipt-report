@@ -1,0 +1,228 @@
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import '../services/ledger_file_service.dart';
+import '../services/receipt_store.dart';
+
+/// ファイルの新規作成（入力用テンプレート）と、Excelからの取り込み
+class LedgerFileScreen extends StatefulWidget {
+  const LedgerFileScreen({super.key});
+
+  @override
+  State<LedgerFileScreen> createState() => _LedgerFileScreenState();
+}
+
+class _LedgerFileScreenState extends State<LedgerFileScreen> {
+  bool _busy = false;
+  final _currency = NumberFormat('#,##0', 'ja_JP');
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _createTemplate() async {
+    setState(() => _busy = true);
+    try {
+      await LedgerFileService.shareTemplate();
+    } catch (_) {
+      _toast('テンプレートを作成できませんでした。');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _import() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['xlsx'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final bytes = result.files.single.bytes;
+    if (bytes == null) {
+      _toast('ファイルを読み込めませんでした。');
+      return;
+    }
+
+    setState(() => _busy = true);
+    LedgerImportPreview preview;
+    try {
+      final existing = await ReceiptStore.loadRaw();
+      preview = LedgerFileService.parseAnnual(bytes, existing);
+    } on FormatException catch (e) {
+      _toast(e.message);
+      if (mounted) setState(() => _busy = false);
+      return;
+    } catch (_) {
+      _toast('取り込みに失敗しました。ファイル形式を確認してください。');
+      if (mounted) setState(() => _busy = false);
+      return;
+    }
+    if (mounted) setState(() => _busy = false);
+    if (!mounted) return;
+
+    final ok = await _confirm(preview);
+    if (ok != true) return;
+
+    setState(() => _busy = true);
+    try {
+      await ReceiptStore.addAll(preview.toAdd);
+      _toast('${preview.toAdd.length}件を取り込みました。');
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (_) {
+      _toast('保存できませんでした。');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<bool?> _confirm(LedgerImportPreview p) {
+    final nothing = p.toAdd.isEmpty;
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('取り込み内容の確認'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('読み取り元のシート: ${p.sheetName}'),
+              const SizedBox(height: 8),
+              Text('取り込む件数: ${p.toAdd.length}件'),
+              Text(
+                '　収入 ${p.incomeCount}件（¥${_currency.format(p.incomeTotal)}）',
+              ),
+              Text(
+                '　支出 ${p.expenseCount}件（¥${_currency.format(p.expenseTotal)}）',
+              ),
+              const SizedBox(height: 8),
+              Text('重複のため無視: ${p.duplicateCount}件'),
+              Text('繰越金行（報告書画面で入力）: ${p.carrySkipped}件'),
+              if (p.needsCheckCount > 0)
+                Text(
+                  '日付を推定: ${p.needsCheckCount}件（備考に元の表記を残します。後で確認してください）',
+                  style: TextStyle(color: Colors.orange.shade800),
+                ),
+              if (p.skippedReasons.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '読み取れなかった行: ${p.skippedReasons.length}件',
+                  style: TextStyle(color: Colors.red.shade700),
+                ),
+                for (final s in p.skippedReasons.take(5)) Text('・$s'),
+                if (p.skippedReasons.length > 5)
+                  Text('ほか ${p.skippedReasons.length - 5}件'),
+              ],
+              const SizedBox(height: 8),
+              const Text(
+                '行事別シートは年間集計と同じ金額を含むため取り込みません。',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            onPressed: nothing ? null : () => Navigator.pop(ctx, true),
+            child: const Text('取り込む'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('ファイルの新規作成・取り込み')),
+      body: SafeArea(
+        child: AbsorbPointer(
+          absorbing: _busy,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _card(
+                icon: Icons.note_add,
+                title: '新規作成：収支入力テンプレート',
+                body:
+                    '空の入力用Excelを作成します。月日・摘要・収入・支出を書き込み、'
+                    '保存したファイルを下の「取り込み」で読み込めます。残高は自動計算されます。',
+                buttonLabel: 'テンプレートを作成・共有',
+                onPressed: _createTemplate,
+              ),
+              const SizedBox(height: 12),
+              _card(
+                icon: Icons.file_open,
+                title: '取り込み：Excelから収支を追加',
+                body:
+                    '「2025年集計」のような年間集計の表（月日・摘要・収入・支出の見出し）を読み込みます。'
+                    '同じ日付・摘要・金額の既存データは重複として無視します。'
+                    '取り込み前に件数を確認できます。',
+                buttonLabel: 'Excelを選んで取り込む',
+                onPressed: _import,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '注意：取り込んだ内容は同期の対象になります（同期ボタンで共有されます）。'
+                '取り込み後、内容を確認してください。',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              if (_busy)
+                const Padding(
+                  padding: EdgeInsets.only(top: 16),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _card({
+    required IconData icon,
+    required String title,
+    required String body,
+    required String buttonLabel,
+    required VoidCallback onPressed,
+  }) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(body, style: const TextStyle(fontSize: 13)),
+            const SizedBox(height: 12),
+            FilledButton.tonal(onPressed: onPressed, child: Text(buttonLabel)),
+          ],
+        ),
+      ),
+    );
+  }
+}

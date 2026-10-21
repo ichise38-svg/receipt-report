@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:excel/excel.dart';
+import 'xlsx_reader.dart';
 
 /// 名簿ファイル（CSV / TXT / XLSX）から氏名を取り出す
 /// 1列目を氏名として扱い、見出し行（氏名・名前・name）は除外する
@@ -20,7 +20,7 @@ class MemberImport {
   }
 
   static List<String> parseXlsx(Uint8List bytes) {
-    final book = Excel.decodeBytes(bytes);
+    final book = XlsxReader.decode(bytes);
     if (book.tables.isEmpty) return [];
     final sheet = book.tables.values.first;
     final names = <String>[];
