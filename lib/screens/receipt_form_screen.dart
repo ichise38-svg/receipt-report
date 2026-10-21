@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../models/receipt.dart';
+import '../services/ledger_summary.dart';
 import '../services/receipt_store.dart';
 
 /// 登録・修正画面（支出はレシート撮影、収入は手入力のみ）
@@ -36,6 +37,11 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
   String _category = receiptCategories.first;
   bool _saving = false;
 
+  // 本件を除く既存データの集計（入力中の残高見込みに使用）
+  int _baseIncome = 0;
+  int _baseExpense = 0;
+  final _numFmt = NumberFormat('#,##0', 'ja_JP');
+
   bool get _isEdit => widget.receipt != null;
   List<String> get _categories =>
       _kind == EntryKind.income ? incomeCategories : receiptCategories;
@@ -59,6 +65,20 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
         _pickImage(ImageSource.camera);
       }
     }
+    // 金額入力のたびに残高見込みを更新
+    _amountCtrl.addListener(() => setState(() {}));
+    _loadBaseTotals();
+  }
+
+  Future<void> _loadBaseTotals() async {
+    final all = await ReceiptStore.loadAll();
+    final others = all.where((e) => e.id != widget.receipt?.id).toList();
+    final summary = LedgerSummary.from(others);
+    if (!mounted) return;
+    setState(() {
+      _baseIncome = summary.income;
+      _baseExpense = summary.expense;
+    });
   }
 
   @override
@@ -175,6 +195,8 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
                     : (s) => _changeKind(s.first),
               ),
               const SizedBox(height: 16),
+              _buildLedgerPreview(),
+              const SizedBox(height: 16),
               if (isExpense) ...[_buildImageArea(), const SizedBox(height: 16)],
               TextFormField(
                 controller: _storeCtrl,
@@ -246,6 +268,72 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// 入力中の収支見込み（保存前の残高・保存後の残高）
+  Widget _buildLedgerPreview() {
+    final scheme = Theme.of(context).colorScheme;
+    final amount =
+        int.tryParse(_amountCtrl.text.replaceAll(',', '').trim()) ?? 0;
+    final before = _baseIncome - _baseExpense;
+    final isIncome = _kind == EntryKind.income;
+    final after = before + (isIncome ? amount : -amount);
+    final afterColor = after < 0 ? Colors.red.shade700 : scheme.onSecondaryContainer;
+    final textStyle = TextStyle(color: scheme.onSecondaryContainer);
+
+    return Card(
+      color: scheme.secondaryContainer,
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('収支の見込み（保存前）', style: textStyle.copyWith(fontSize: 12)),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('現在の残高', style: textStyle.copyWith(fontSize: 12)),
+                      Text(
+                        '¥ ${_numFmt.format(before)}',
+                        style: textStyle.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.arrow_forward, color: scheme.onSecondaryContainer),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('入力後の残高', style: textStyle.copyWith(fontSize: 12)),
+                      Text(
+                        '¥ ${_numFmt.format(after)}',
+                        style: TextStyle(
+                          color: afterColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '今回: ${isIncome ? '+' : '-'}¥ ${_numFmt.format(amount)}（${_kind.label}）',
+              style: textStyle.copyWith(fontSize: 12),
+            ),
+          ],
         ),
       ),
     );
