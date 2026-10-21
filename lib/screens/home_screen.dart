@@ -7,6 +7,7 @@ import '../models/receipt.dart';
 import '../services/ledger_summary.dart';
 import '../services/receipt_store.dart';
 import 'receipt_detail_screen.dart';
+import 'cloud_sync_screen.dart';
 import 'receipt_form_screen.dart';
 import 'report_screen.dart';
 
@@ -82,6 +83,17 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('収支管理'),
         actions: [
+          IconButton(
+            tooltip: 'クラウド連携',
+            icon: const Icon(Icons.cloud_sync),
+            onPressed: _entries.isEmpty
+                ? null
+                : () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => CloudSyncScreen(entries: _entries),
+                    ),
+                  ),
+          ),
           IconButton(
             tooltip: '会計報告書を作成',
             icon: const Icon(Icons.summarize),
