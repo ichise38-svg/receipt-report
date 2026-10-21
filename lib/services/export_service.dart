@@ -90,6 +90,7 @@ class ExportService {
 
   /// 年間収支報告書（添付サンプルと同じ並び）をPDFで共有
   static Future<void> shareReport({
+    required String mainTitle,
     required String title,
     required List<Receipt> receipts,
     required DateTime from,
@@ -120,7 +121,12 @@ class ExportService {
         theme: theme,
         margin: const pw.EdgeInsets.all(28),
         build: (ctx) => [
-          pw.Text(title, style: const pw.TextStyle(fontSize: 16)),
+          pw.Text(mainTitle, style: const pw.TextStyle(fontSize: 16)),
+          pw.SizedBox(height: 2),
+          pw.Text(
+            title,
+            style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+          ),
           pw.SizedBox(height: 2),
           pw.Text(
             '対象期間: ${_dateFmt.format(from)} 〜 ${_dateFmt.format(to)}',
@@ -287,6 +293,7 @@ class ExportService {
 
   /// イベント別会計報告書（25忘年会・旅行と同じ並び）をPDFで共有
   static Future<void> shareEventReport({
+    required String mainTitle,
     required String eventName,
     required List<Receipt> receipts,
     required int participants,
@@ -310,9 +317,12 @@ class ExportService {
         theme: theme,
         margin: const pw.EdgeInsets.all(32),
         build: (ctx) => [
+          // 左上：メインのタイトル＋その下にイベント名のタイトル
+          pw.Text(mainTitle, style: const pw.TextStyle(fontSize: 16)),
+          pw.SizedBox(height: 2),
           pw.Text(
             '${report.eventName}　会計報告書',
-            style: const pw.TextStyle(fontSize: 16),
+            style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 2),
           pw.Text(period, style: const pw.TextStyle(fontSize: 10)),

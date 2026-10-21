@@ -14,6 +14,7 @@ class EventExcelService {
   static final _dateFmt = DateFormat('yyyy/MM/dd');
 
   static List<int> buildWorkbook({
+    required String mainTitle,
     required String eventName,
     required List<Receipt> entries,
     required int participants,
@@ -67,16 +68,18 @@ class EventExcelService {
     String ref(int col, int row) => '${'ABCDEFG'[col]}${row + 1}';
 
     // ---------- 見出し ----------
-    text(0, 0, '${report.eventName}　会計報告書', style: title);
+    // 左上：メインのタイトル、その下にイベント名のタイトル
+    text(0, 0, mainTitle, style: title);
+    text(0, 1, '${report.eventName}　会計報告書', style: bold);
     if (report.firstDate != null) {
       final period = report.firstDate == report.lastDate
           ? _dateFmt.format(report.firstDate!)
           : '${_dateFmt.format(report.firstDate!)} 〜 ${_dateFmt.format(report.lastDate!)}';
-      text(0, 1, '期間: $period');
+      text(0, 2, '期間: $period');
     }
 
     // ---------- 収入の部 ----------
-    var row = 3;
+    var row = 4;
     text(0, row, '※収入の部', style: bold);
     row++;
     text(0, row, '項目', style: header);
@@ -179,11 +182,13 @@ class EventExcelService {
   }
 
   static Future<void> shareWorkbook({
+    required String mainTitle,
     required String eventName,
     required List<Receipt> entries,
     required int participants,
   }) async {
     final bytes = buildWorkbook(
+      mainTitle: mainTitle,
       eventName: eventName,
       entries: entries,
       participants: participants,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/receipt.dart';
+import '../services/app_settings.dart';
 import '../services/event_excel_service.dart';
 import '../services/event_report.dart';
 import '../services/export_service.dart';
@@ -22,6 +23,7 @@ class _EventReportScreenState extends State<EventReportScreen> {
   final _dateFmt = DateFormat('yyyy/MM/dd');
   String? _selected;
   int _participants = 0;
+  String _mainTitle = AppSettings.defaultMainTitle;
   bool _busy = false;
 
   @override
@@ -31,6 +33,9 @@ class _EventReportScreenState extends State<EventReportScreen> {
     if (events.isNotEmpty) _selected = events.first;
     MemberStore.loadAll().then((m) {
       if (mounted) setState(() => _participants = m.length);
+    });
+    AppSettings.getMainTitle().then((t) {
+      if (mounted) setState(() => _mainTitle = t);
     });
   }
 
@@ -55,12 +60,14 @@ class _EventReportScreenState extends State<EventReportScreen> {
     try {
       if (excel) {
         await EventExcelService.shareWorkbook(
+          mainTitle: _mainTitle,
           eventName: name,
           entries: widget.entries,
           participants: _participants,
         );
       } else {
         await ExportService.shareEventReport(
+          mainTitle: _mainTitle,
           eventName: name,
           receipts: widget.entries,
           participants: _participants,

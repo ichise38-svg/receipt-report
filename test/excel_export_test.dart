@@ -6,6 +6,7 @@ import 'package:receipt_report/services/excel_export_service.dart';
 void main() {
   test('収支Excelに数式・明細・サマリーが含まれる', () {
     final bytes = ExcelExportService.buildWorkbook(
+      mainTitle: '関桜会　収支報告書',
       title: 'テスト',
       entries: [
         Receipt(

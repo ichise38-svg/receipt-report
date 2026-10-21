@@ -5,6 +5,7 @@ import '../models/member.dart';
 import '../models/receipt.dart';
 import '../services/member_store.dart';
 import '../services/excel_export_service.dart';
+import '../services/app_settings.dart';
 import '../services/export_service.dart';
 import '../services/ledger_summary.dart';
 
@@ -30,12 +31,16 @@ class _ReportScreenState extends State<ReportScreen> {
   bool _busy = false;
   List<Member> _members = [];
   bool _includeRoster = true; // 名簿を報告書に含めるか
+  String _mainTitle = AppSettings.defaultMainTitle;
 
   @override
   void initState() {
     super.initState();
     MemberStore.loadAll().then((m) {
       if (mounted) setState(() => _members = m);
+    });
+    AppSettings.getMainTitle().then((t) {
+      if (mounted) setState(() => _mainTitle = t);
     });
     final now = DateTime.now();
     final dates = widget.entries.map((r) => r.date).toList()..sort();
@@ -104,6 +109,7 @@ class _ReportScreenState extends State<ReportScreen> {
     try {
       if (excel) {
         await ExcelExportService.shareLedger(
+          mainTitle: _mainTitle,
           title: _title,
           entries: list,
           from: _from,
@@ -115,6 +121,7 @@ class _ReportScreenState extends State<ReportScreen> {
         );
       } else {
         await ExportService.shareReport(
+          mainTitle: _mainTitle,
           title: _title,
           receipts: list,
           from: _from,
@@ -154,7 +161,7 @@ class _ReportScreenState extends State<ReportScreen> {
                   TextField(
                     controller: _titleCtrl,
                     decoration: const InputDecoration(
-                      labelText: '報告書のタイトル（用途・案件名）',
+                      labelText: 'サブタイトル（用途・案件名。主タイトルの下に表示）',
                       border: OutlineInputBorder(),
                     ),
                     onChanged: (_) => setState(() {}),

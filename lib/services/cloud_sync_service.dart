@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/member.dart';
 import '../models/receipt.dart';
+import 'app_settings.dart';
 import 'member_store.dart';
 import 'receipt_store.dart';
 
@@ -20,11 +21,6 @@ import 'receipt_store.dart';
 /// - 競合: 更新日時が新しい方を優先（最後の更新優先）。削除も全員に反映します。
 /// 同期は手動のみです（通信量と処理回数を抑えるため）。
 class CloudSyncService {
-  /// 共有先（Apps Script のウェブアプリURL）。全員この値で自動接続します。
-  /// デプロイ後に https://script.google.com/macros/s/.../exec を設定してください。
-  static const String fixedEndpoint =
-      'https://script.google.com/macros/s/REPLACE_WITH_DEPLOY_ID/exec';
-
   static const _lastSyncKey = 'cloud_last_sync';
   static const _cursorKey = 'cloud_sync_cursor';
   static const _pushKey = 'cloud_last_push';
@@ -33,11 +29,14 @@ class CloudSyncService {
   static const int maxImageSide = 1200;
   static const int jpegQuality = 80;
 
-  static Future<String> getEndpoint() async => fixedEndpoint;
+  /// 設定画面で入力された同期先URL（Apps Script のウェブアプリURL など）
+  static Future<String> getEndpoint() => AppSettings.getSyncEndpoint();
 
-  /// 同期先が設定済みか（プレースホルダーのままなら false）
-  static bool get isConfigured =>
-      !fixedEndpoint.contains('REPLACE_WITH_DEPLOY_ID');
+  /// 同期先が設定済みか（https で始まるURLが保存されているか）
+  static Future<bool> isConfigured() async {
+    final url = await getEndpoint();
+    return Uri.tryParse(url)?.isScheme('https') ?? false;
+  }
 
   static Future<DateTime?> lastSyncedAt() async {
     final prefs = await SharedPreferences.getInstance();
@@ -176,7 +175,9 @@ class CloudSyncService {
   static Uri _validatedUri(String endpoint) {
     final uri = Uri.tryParse(endpoint);
     if (uri == null || !uri.isScheme('https')) {
-      throw const CloudSyncException('送信先URLは https:// で始まる必要があります。');
+      throw const CloudSyncException(
+        '同期先URLが未設定、または https:// で始まっていません。設定画面で入力してください。',
+      );
     }
     return uri;
   }

@@ -21,6 +21,7 @@ class ExcelExportService {
 
   /// 収支報告書のExcelバイト列を生成（共有は行わない）
   static List<int> buildWorkbook({
+    required String mainTitle,
     required String title,
     required List<Receipt> entries,
     required DateTime from,
@@ -76,13 +77,15 @@ class ExcelExportService {
     String ref(int col, int row) => '${'ABCDEFG'[col]}${row + 1}';
 
     // ---------- 見出し ----------
-    put(0, 0, TextCellValue(title), style: titleStyle);
+    // 左上：メインのタイトル（設定値）。その下に用途・案件名（サブタイトル）
+    put(0, 0, TextCellValue(mainTitle), style: titleStyle);
+    put(0, 1, TextCellValue(title), style: bold);
     put(
       0,
-      1,
+      2,
       TextCellValue('対象期間: ${_dateFmt.format(from)} 〜 ${_dateFmt.format(to)}'),
     );
-    put(0, 2, TextCellValue('作成日: ${_dateFmt.format(DateTime.now())}'));
+    put(3, 2, TextCellValue('作成日: ${_dateFmt.format(DateTime.now())}'));
 
     for (var c = 0; c < _headers.length; c++) {
       put(c, _headerRow, TextCellValue(_headers[c]), style: header);
@@ -209,6 +212,7 @@ class ExcelExportService {
   }
 
   static Future<void> shareLedger({
+    required String mainTitle,
     required String title,
     required List<Receipt> entries,
     required DateTime from,
@@ -219,6 +223,7 @@ class ExcelExportService {
     int carryBank = 0,
   }) async {
     final bytes = buildWorkbook(
+      mainTitle: mainTitle,
       title: title,
       entries: entries,
       from: from,

@@ -14,6 +14,7 @@ import 'receipt_detail_screen.dart';
 import 'member_screen.dart';
 import 'receipt_form_screen.dart';
 import 'report_screen.dart';
+import 'settings_screen.dart';
 
 /// ホーム：収支一覧（残高サマリー付き）
 class HomeScreen extends StatefulWidget {
@@ -57,7 +58,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// 起動時・復帰時の自動同期。失敗しても黙って続行（オフラインでも使えるように）
   Future<void> _autoSync() async {
-    if (!CloudSyncService.isConfigured) return;
+    if (!await CloudSyncService.isConfigured()) return;
     final last = _lastAutoSync;
     if (last != null && DateTime.now().difference(last).inMinutes < 5) return;
     _lastAutoSync = DateTime.now();
@@ -65,16 +66,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   /// 同期ボタン（手動）。結果を必ず表示する
-  Future<void> _manualSync() {
-    if (!CloudSyncService.isConfigured) {
+  Future<void> _manualSync() async {
+    if (!await CloudSyncService.isConfigured()) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          const SnackBar(content: Text('同期先が未設定です。アプリの設定を確認してください。')),
+          const SnackBar(content: Text('同期先が未設定です。「設定」から同期先URLを入力してください。')),
         );
-      return Future.value();
+      return;
     }
-    return _runSync(showMessage: true);
+    await _runSync(showMessage: true);
+  }
+
+  Future<void> _openSettings() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+    _autoSync();
   }
 
   Future<void> _runSync({required bool showMessage}) async {
@@ -167,6 +176,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             tooltip: '参加者名簿',
             icon: const Icon(Icons.groups),
             onPressed: _openMembers,
+          ),
+          IconButton(
+            tooltip: '設定（同期先・報告書タイトル）',
+            icon: const Icon(Icons.settings),
+            onPressed: _openSettings,
           ),
           IconButton(
             tooltip: '同期',
