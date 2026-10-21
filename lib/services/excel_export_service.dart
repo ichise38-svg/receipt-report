@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/receipt.dart';
+import 'ledger_summary.dart';
 
 /// 収支報告書を Excel(.xlsx) で書き出す
 /// シート構成: 「サマリー」（カテゴリ別集計・収支残高）/「明細」（全件一覧）
@@ -20,12 +21,18 @@ class ExcelExportService {
     required List<Receipt> entries,
     required DateTime from,
     required DateTime to,
+    required int participants,
+    List<String> participantNames = const [],
   }) {
     final sorted = [...entries]..sort((a, b) => a.date.compareTo(b.date));
     final excel = Excel.createExcel();
     final summarySheet = excel['サマリー'];
     final detailSheet = excel['明細'];
     excel.delete('Sheet1');
+    final summaryData = LedgerSummary.from(
+      entries,
+      participants: participants,
+    );
 
     final bold = CellStyle(bold: true);
     final header = CellStyle(
@@ -148,7 +155,30 @@ class ExcelExportService {
     row++;
     put(0, row, TextCellValue('差引残高（収入－支出）'), style: bold);
     putFormula(1, row, 'B$incomeRow-B$expenseRow', style: moneyBold);
-    row += 2;
+    row += 1;
+    final participantRow = row + 1;
+    put(0, row, TextCellValue('参加人数'));
+    put(1, row, IntCellValue(participants), style: money);
+    row++;
+    if (summaryData.expensePerPerson != null) {
+      put(0, row, TextCellValue('1人あたり支出'));
+      putFormula(
+        1,
+        row,
+        'ROUNDDOWN(B$expenseRow/B$participantRow,0)',
+        style: money,
+      );
+      row++;
+      put(0, row, TextCellValue('1人あたり収入'));
+      putFormula(
+        1,
+        row,
+        'ROUNDDOWN(B$incomeRow/B$participantRow,0)',
+        style: money,
+      );
+      row++;
+    }
+    row += 1;
 
     // 支出カテゴリ別
     row = _writeCategoryTable(
@@ -190,6 +220,28 @@ class ExcelExportService {
     summarySheet.setColumnWidth(0, 26);
     summarySheet.setColumnWidth(1, 16);
 
+    // ---------- 名簿シート（名簿がある場合のみ） ----------
+    if (participantNames.isNotEmpty) {
+      final rosterSheet = excel['参加者名簿'];
+      rosterSheet.appendRow(
+        ['No.', '氏名'].map(TextCellValue.new).toList(),
+      );
+      for (var c = 0; c < 2; c++) {
+        rosterSheet
+                .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0))
+                .cellStyle =
+            header;
+      }
+      for (var i = 0; i < participantNames.length; i++) {
+        rosterSheet.appendRow([
+          IntCellValue(i + 1),
+          TextCellValue(participantNames[i]),
+        ]);
+      }
+      rosterSheet.setColumnWidth(0, 8);
+      rosterSheet.setColumnWidth(1, 24);
+    }
+
     final bytes = excel.encode();
     if (bytes == null) {
       throw Exception('Excelの作成に失敗しました');
@@ -202,12 +254,16 @@ class ExcelExportService {
     required List<Receipt> entries,
     required DateTime from,
     required DateTime to,
+    required int participants,
+    List<String> participantNames = const [],
   }) async {
     final bytes = buildWorkbook(
       title: title,
       entries: entries,
       from: from,
       to: to,
+      participants: participants,
+      participantNames: participantNames,
     );
     final safeTitle = title.replaceAll(RegExp(r'[\\/:*?"<>|\s]'), '_');
     final dir = await getTemporaryDirectory();

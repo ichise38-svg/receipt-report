@@ -8,7 +8,7 @@ import '../models/receipt.dart';
 import '../services/ledger_summary.dart';
 import '../services/receipt_store.dart';
 
-/// 登録・修正画面（支出はレシート撮影、収入は手入力のみ）
+/// 登録・修正画面（支出・収入ともにレシート画像は任意）
 /// 読み取り（OCR/AI）は行わず、手入力で登録する方式（通信・AIコストを抑えるため）
 class ReceiptFormScreen extends StatefulWidget {
   final Receipt? receipt;
@@ -61,9 +61,6 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
     } else {
       _kind = widget.initialKind;
       _category = _categories.first;
-      if (_kind == EntryKind.expense) {
-        _pickImage(ImageSource.camera);
-      }
     }
     // 金額入力のたびに残高見込みを更新
     _amountCtrl.addListener(() => setState(() {}));
@@ -125,17 +122,10 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
         _imagePath = null;
       }
     });
-    if (kind == EntryKind.expense && _imagePath == null && !_isEdit) {
-      _pickImage(ImageSource.camera);
-    }
   }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_kind == EntryKind.expense && _imagePath == null) {
-      _showMessage('支出はレシート画像の撮影または選択が必要です。');
-      return;
-    }
     setState(() => _saving = true);
     try {
       final receipt = Receipt(
@@ -169,7 +159,7 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _isEdit ? '${_kind.label}を修正' : (isExpense ? 'レシートを登録（支出）' : '収入を登録'),
+          _isEdit ? '${_kind.label}を修正' : (isExpense ? '支出を登録' : '収入を登録'),
         ),
         actions: [
           TextButton(
@@ -351,7 +341,16 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
             color: Colors.grey.shade200,
             child: hasImage
                 ? Image.file(File(_imagePath!), fit: BoxFit.contain)
-                : const Center(child: Icon(Icons.receipt_long, size: 64)),
+                : const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.receipt_long, size: 64),
+                        SizedBox(height: 8),
+                        Text('レシートなし（任意）'),
+                      ],
+                    ),
+                  ),
           ),
         ),
         const SizedBox(height: 8),

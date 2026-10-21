@@ -3,11 +3,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../models/member.dart';
 import '../models/receipt.dart';
 import '../services/ledger_summary.dart';
+import '../services/member_store.dart';
 import '../services/receipt_store.dart';
 import 'receipt_detail_screen.dart';
 import 'cloud_sync_screen.dart';
+import 'member_screen.dart';
 import 'receipt_form_screen.dart';
 import 'report_screen.dart';
 
@@ -23,6 +26,7 @@ enum _Filter { all, expense, income }
 
 class _HomeScreenState extends State<HomeScreen> {
   List<Receipt> _entries = [];
+  List<Member> _members = [];
   bool _loading = true;
   _Filter _filter = _Filter.all;
   final _currency = NumberFormat('#,##0', 'ja_JP');
@@ -36,11 +40,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _reload() async {
     final list = await ReceiptStore.loadAll();
+    final members = await MemberStore.loadAll();
     if (!mounted) return;
     setState(() {
       _entries = list;
+      _members = members;
       _loading = false;
     });
+  }
+
+  Future<void> _openMembers() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const MemberScreen()));
+    _reload();
   }
 
   Future<void> _openForm({EntryKind kind = EntryKind.expense}) async {
@@ -76,13 +89,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final summary = LedgerSummary.from(_entries);
+    final summary = LedgerSummary.from(
+      _entries,
+      participants: _members.length,
+    );
     final visible = _visible;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('収支管理'),
         actions: [
+          IconButton(
+            tooltip: '参加者名簿',
+            icon: const Icon(Icons.groups),
+            onPressed: _openMembers,
+          ),
           IconButton(
             tooltip: 'クラウド連携',
             icon: const Icon(Icons.cloud_sync),
@@ -160,7 +181,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   heroTag: 'expense',
                   onPressed: () => _openForm(kind: EntryKind.expense),
                   icon: const Icon(Icons.camera_alt),
-                  label: const Text('レシート撮影・支出登録'),
+                  label: const Text('支出を登録'),
                 ),
               ],
             ),
@@ -206,6 +227,26 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: _amountChip('支出', s.expense, Colors.red.shade700),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: _openMembers,
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                s.participants == 0
+                    ? '参加人数：未登録（名簿を登録すると1人あたりを表示）'
+                    : '参加人数：${s.participants}名　'
+                          '1人あたり支出 ¥ ${_currency.format(s.expensePerPerson)}',
+                style: const TextStyle(fontSize: 13),
+              ),
+            ),
           ),
         ],
       ),

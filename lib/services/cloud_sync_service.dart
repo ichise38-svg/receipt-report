@@ -55,6 +55,8 @@ class CloudSyncService {
     required String title,
     required DateTime from,
     required DateTime to,
+    required int participants,
+    List<String> participantNames = const [],
   }) async {
     final endpoint = await getEndpoint();
     final token = await getToken();
@@ -71,6 +73,10 @@ class CloudSyncService {
       'token': token,
       'title': title,
       'period': {'from': from.toIso8601String(), 'to': to.toIso8601String()},
+      'participants': {
+        'count': participants,
+        'names': participantNames,
+      },
       'sentAt': DateTime.now().toIso8601String(),
       'entries': await Future.wait(entries.map(_toPayload)),
     };

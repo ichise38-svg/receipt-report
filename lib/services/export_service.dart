@@ -82,10 +82,12 @@ class ExportService {
     required List<Receipt> receipts,
     required DateTime from,
     required DateTime to,
+    required int participants,
+    List<String> participantNames = const [],
   }) async {
     final font = await _loadJapaneseFont();
     final theme = pw.ThemeData.withFont(base: font, bold: font);
-    final summary = LedgerSummary.from(receipts);
+    final summary = LedgerSummary.from(receipts, participants: participants);
     final sorted = [...receipts]..sort((a, b) => a.date.compareTo(b.date));
 
     final doc = pw.Document();
@@ -118,6 +120,11 @@ class ExportService {
               ['収入合計', _currency.format(summary.income)],
               ['支出合計', _currency.format(summary.expense)],
               ['差引残高（収入－支出）', _currency.format(summary.balance)],
+              ['参加人数', '${summary.participants}名'],
+              if (summary.expensePerPerson != null)
+                ['1人あたり支出', _currency.format(summary.expensePerPerson)],
+              if (summary.incomePerPerson != null)
+                ['1人あたり収入', _currency.format(summary.incomePerPerson)],
             ],
             rightAlignCols: const {1},
           ),
@@ -163,6 +170,30 @@ class ExportService {
         ],
       ),
     );
+
+    if (participantNames.isNotEmpty) {
+      doc.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          theme: theme,
+          margin: const pw.EdgeInsets.all(32),
+          build: (ctx) => [
+            pw.Text(
+              '参加者名簿（${participantNames.length}名）',
+              style: const pw.TextStyle(fontSize: 14),
+            ),
+            pw.SizedBox(height: 6),
+            _table(
+              headers: ['No.', '氏名'],
+              rows: [
+                for (var i = 0; i < participantNames.length; i++)
+                  ['${i + 1}', participantNames[i]],
+              ],
+            ),
+          ],
+        ),
+      );
+    }
 
     // 画像のあるレシートは1件1ページで添付
     for (final r in sorted) {

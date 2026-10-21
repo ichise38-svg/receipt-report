@@ -24,6 +24,8 @@ void main() {
       ],
       from: DateTime(2025, 1, 1),
       to: DateTime(2025, 1, 31),
+      participants: 4,
+      participantNames: ['山田', '佐藤', '鈴木', '田中'],
     );
     final book = Excel.decodeBytes(bytes);
     expect(book.tables.keys, containsAll(['サマリー', '明細']));

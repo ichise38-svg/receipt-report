@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../models/member.dart';
 import '../models/receipt.dart';
+import '../services/member_store.dart';
 import '../services/excel_export_service.dart';
 import '../services/export_service.dart';
 import '../services/ledger_summary.dart';
@@ -24,10 +26,15 @@ class _ReportScreenState extends State<ReportScreen> {
   final _dateFmt = DateFormat('yyyy/MM/dd');
   final Set<String> _excludedIds = {};
   bool _busy = false;
+  List<Member> _members = [];
+  bool _includeRoster = true; // 名簿を報告書に含めるか
 
   @override
   void initState() {
     super.initState();
+    MemberStore.loadAll().then((m) {
+      if (mounted) setState(() => _members = m);
+    });
     final now = DateTime.now();
     final dates = widget.entries.map((r) => r.date).toList()..sort();
     _from = dates.isEmpty ? DateTime(now.year, now.month, 1) : dates.first;
@@ -70,6 +77,11 @@ class _ReportScreenState extends State<ReportScreen> {
     });
   }
 
+  int get _participantCount => _members.length;
+
+  List<String> get _rosterNames =>
+      _includeRoster ? _members.map((m) => m.name).toList() : const [];
+
   String get _title =>
       _titleCtrl.text.trim().isEmpty ? '経費精算' : _titleCtrl.text.trim();
 
@@ -89,6 +101,8 @@ class _ReportScreenState extends State<ReportScreen> {
           entries: list,
           from: _from,
           to: _to,
+          participants: _participantCount,
+          participantNames: _rosterNames,
         );
       } else {
         await ExportService.shareReport(
@@ -96,6 +110,8 @@ class _ReportScreenState extends State<ReportScreen> {
           receipts: list,
           from: _from,
           to: _to,
+          participants: _participantCount,
+          participantNames: _rosterNames,
         );
       }
     } catch (e) {
@@ -111,7 +127,7 @@ class _ReportScreenState extends State<ReportScreen> {
   @override
   Widget build(BuildContext context) {
     final list = _filtered;
-    final summary = LedgerSummary.from(list);
+    final summary = LedgerSummary.from(list, participants: _participantCount);
     final inRangeEntries = widget.entries.where(_inRange).toList()
       ..sort((a, b) => b.date.compareTo(a.date));
 
@@ -166,11 +182,30 @@ class _ReportScreenState extends State<ReportScreen> {
                           _previewRow('支出合計', summary.expense),
                           const Divider(),
                           _previewRow('差引残高', summary.balance, bold: true),
+                          const Divider(),
+                          Text('参加人数：${_members.length}名'),
+                          if (summary.expensePerPerson != null)
+                            _previewRow('1人あたり支出', summary.expensePerPerson!),
+                          if (_members.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 4),
+                              child: Text(
+                                '※名簿が未登録のため人数は0名です。ホーム右上の名簿から登録できます。',
+                                style: TextStyle(fontSize: 12, color: Colors.orange),
+                              ),
+                            ),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('参加者名簿を報告書に含める'),
+                    subtitle: Text('${_members.length}名'),
+                    value: _includeRoster,
+                    onChanged: (v) => setState(() => _includeRoster = v),
+                  ),
+                  const SizedBox(height: 8),
                   const Text(
                     '対象の登録（チェックを外すと除外）',
                     style: TextStyle(fontWeight: FontWeight.bold),

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../models/member.dart';
 import '../models/receipt.dart';
 import '../services/cloud_sync_service.dart';
+import '../services/member_store.dart';
 
 /// クラウド連携：送信先の設定と、期間を指定した手動送信
 class CloudSyncScreen extends StatefulWidget {
@@ -26,6 +28,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
   bool _loading = true;
   bool _busy = false;
   DateTime? _lastSynced;
+  List<Member> _members = [];
 
   @override
   void initState() {
@@ -49,6 +52,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
     _endpointCtrl.text = await CloudSyncService.getEndpoint();
     _tokenCtrl.text = await CloudSyncService.getToken();
     _lastSynced = await CloudSyncService.lastSyncedAt();
+    _members = await MemberStore.loadAll();
     if (!mounted) return;
     setState(() => _loading = false);
   }
@@ -122,6 +126,8 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
         title: _titleCtrl.text.trim().isEmpty ? '経費精算' : _titleCtrl.text.trim(),
         from: _from,
         to: _to,
+        participants: _members.length,
+        participantNames: _members.map((m) => m.name).toList(),
       );
       _lastSynced = await CloudSyncService.lastSyncedAt();
       _toast('$count件を送信しました。');
