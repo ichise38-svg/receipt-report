@@ -1,6 +1,6 @@
 import 'package:uuid/uuid.dart';
 
-/// 経費カテゴリ
+/// 経費カテゴリ（支出）
 const List<String> receiptCategories = [
   '交通費',
   '食費',
@@ -11,11 +11,34 @@ const List<String> receiptCategories = [
   'その他',
 ];
 
-/// レシート1件分のデータ
+/// 収入カテゴリ
+const List<String> incomeCategories = [
+  '売上',
+  '入金',
+  '補助金',
+  '立替金回収',
+  '雑収入',
+  'その他',
+];
+
+/// 収支区分
+enum EntryKind {
+  expense('支出'),
+  income('収入');
+
+  final String label;
+  const EntryKind(this.label);
+
+  static EntryKind fromName(String? name) =>
+      name == 'income' ? EntryKind.income : EntryKind.expense;
+}
+
+/// 収支1件分のデータ（支出はレシート画像あり、収入は画像なしも可）
 class Receipt {
   final String id;
-  final String imagePath;
-  final String storeName;
+  final EntryKind kind;
+  final String imagePath; // 画像なしの場合は空文字
+  final String storeName; // 支出: 店舗名 / 収入: 取引先・摘要
   final DateTime date;
   final int amount; // 税込合計（円）
   final String category;
@@ -24,50 +47,35 @@ class Receipt {
 
   Receipt({
     String? id,
-    required this.imagePath,
+    this.kind = EntryKind.expense,
+    this.imagePath = '',
     required this.storeName,
     required this.date,
     required this.amount,
     required this.category,
     this.memo = '',
     DateTime? createdAt,
-  })  : id = id ?? const Uuid().v4(),
-        createdAt = createdAt ?? DateTime.now();
+  }) : id = id ?? const Uuid().v4(),
+       createdAt = createdAt ?? DateTime.now();
 
-  Receipt copyWith({
-    String? imagePath,
-    String? storeName,
-    DateTime? date,
-    int? amount,
-    String? category,
-    String? memo,
-  }) {
-    return Receipt(
-      id: id,
-      imagePath: imagePath ?? this.imagePath,
-      storeName: storeName ?? this.storeName,
-      date: date ?? this.date,
-      amount: amount ?? this.amount,
-      category: category ?? this.category,
-      memo: memo ?? this.memo,
-      createdAt: createdAt,
-    );
-  }
+  bool get isIncome => kind == EntryKind.income;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'imagePath': imagePath,
-        'storeName': storeName,
-        'date': date.toIso8601String(),
-        'amount': amount,
-        'category': category,
-        'memo': memo,
-        'createdAt': createdAt.toIso8601String(),
-      };
+    'id': id,
+    'kind': kind.name,
+    'imagePath': imagePath,
+    'storeName': storeName,
+    'date': date.toIso8601String(),
+    'amount': amount,
+    'category': category,
+    'memo': memo,
+    'createdAt': createdAt.toIso8601String(),
+  };
 
   factory Receipt.fromJson(Map<String, dynamic> json) {
     return Receipt(
       id: json['id'] as String,
+      kind: EntryKind.fromName(json['kind'] as String?),
       imagePath: json['imagePath'] as String? ?? '',
       storeName: json['storeName'] as String? ?? '',
       date: DateTime.tryParse(json['date'] as String? ?? '') ?? DateTime.now(),
@@ -75,7 +83,8 @@ class Receipt {
       category: json['category'] as String? ?? 'その他',
       memo: json['memo'] as String? ?? '',
       createdAt:
-          DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+          DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+          DateTime.now(),
     );
   }
 }

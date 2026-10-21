@@ -7,12 +7,17 @@ import 'package:intl/intl.dart';
 import '../models/receipt.dart';
 import '../services/receipt_store.dart';
 
-/// 撮影・新規登録／編集画面
-/// 読み取りは行わず、入力内容を手で修正・登録する方式（通信・AIコストを抑えるため）
+/// 登録・修正画面（支出はレシート撮影、収入は手入力のみ）
+/// 読み取り（OCR/AI）は行わず、手入力で登録する方式（通信・AIコストを抑えるため）
 class ReceiptFormScreen extends StatefulWidget {
   final Receipt? receipt;
+  final EntryKind initialKind;
 
-  const ReceiptFormScreen({super.key, this.receipt});
+  const ReceiptFormScreen({
+    super.key,
+    this.receipt,
+    this.initialKind = EntryKind.expense,
+  });
 
   @override
   State<ReceiptFormScreen> createState() => _ReceiptFormScreenState();
@@ -25,26 +30,34 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
   final _memoCtrl = TextEditingController();
   final _dateFmt = DateFormat('yyyy/MM/dd');
 
-  String? _imagePath; // 保存済みまたは新規撮影の画像パス
+  late EntryKind _kind;
+  String? _imagePath; // 保存済みまたは新規撮影の画像パス（収入は null 可）
   DateTime _date = DateTime.now();
   String _category = receiptCategories.first;
   bool _saving = false;
 
   bool get _isEdit => widget.receipt != null;
+  List<String> get _categories =>
+      _kind == EntryKind.income ? incomeCategories : receiptCategories;
 
   @override
   void initState() {
     super.initState();
     final r = widget.receipt;
     if (r != null) {
-      _imagePath = r.imagePath;
+      _kind = r.kind;
+      _imagePath = r.imagePath.isEmpty ? null : r.imagePath;
       _storeCtrl.text = r.storeName;
       _amountCtrl.text = r.amount.toString();
       _memoCtrl.text = r.memo;
       _date = r.date;
       _category = r.category;
     } else {
-      _pickImage(ImageSource.camera);
+      _kind = widget.initialKind;
+      _category = _categories.first;
+      if (_kind == EntryKind.expense) {
+        _pickImage(ImageSource.camera);
+      }
     }
   }
 
@@ -84,17 +97,31 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
     if (picked != null) setState(() => _date = picked);
   }
 
+  void _changeKind(EntryKind kind) {
+    setState(() {
+      _kind = kind;
+      _category = _categories.first;
+      if (kind == EntryKind.income) {
+        _imagePath = null;
+      }
+    });
+    if (kind == EntryKind.expense && _imagePath == null && !_isEdit) {
+      _pickImage(ImageSource.camera);
+    }
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_imagePath == null) {
-      _showMessage('レシート画像を撮影または選択してください。');
+    if (_kind == EntryKind.expense && _imagePath == null) {
+      _showMessage('支出はレシート画像の撮影または選択が必要です。');
       return;
     }
     setState(() => _saving = true);
     try {
       final receipt = Receipt(
         id: widget.receipt?.id,
-        imagePath: _imagePath!,
+        kind: _kind,
+        imagePath: _kind == EntryKind.expense ? (_imagePath ?? '') : '',
         storeName: _storeCtrl.text.trim(),
         date: _date,
         amount: int.parse(_amountCtrl.text.replaceAll(',', '')),
@@ -118,9 +145,12 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isExpense = _kind == EntryKind.expense;
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEdit ? 'レシートを修正' : 'レシートを登録'),
+        title: Text(
+          _isEdit ? '${_kind.label}を修正' : (isExpense ? 'レシートを登録（支出）' : '収入を登録'),
+        ),
         actions: [
           TextButton(
             onPressed: _saving ? null : _save,
@@ -134,16 +164,27 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _buildImageArea(),
+              SegmentedButton<EntryKind>(
+                segments: const [
+                  ButtonSegment(value: EntryKind.expense, label: Text('支出')),
+                  ButtonSegment(value: EntryKind.income, label: Text('収入')),
+                ],
+                selected: {_kind},
+                onSelectionChanged: _isEdit
+                    ? null
+                    : (s) => _changeKind(s.first),
+              ),
               const SizedBox(height: 16),
+              if (isExpense) ...[_buildImageArea(), const SizedBox(height: 16)],
               TextFormField(
                 controller: _storeCtrl,
-                decoration: const InputDecoration(
-                  labelText: '店舗名',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: isExpense ? '店舗名' : '取引先・摘要',
+                  border: const OutlineInputBorder(),
                 ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? '店舗名を入力してください' : null,
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? (isExpense ? '店舗名を入力してください' : '摘要を入力してください')
+                    : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -175,12 +216,15 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                initialValue: _category,
+                key: ValueKey(_kind),
+                initialValue: _categories.contains(_category)
+                    ? _category
+                    : _categories.first,
                 decoration: const InputDecoration(
                   labelText: 'カテゴリ',
                   border: OutlineInputBorder(),
                 ),
-                items: receiptCategories
+                items: _categories
                     .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                     .toList(),
                 onChanged: (v) => setState(() => _category = v ?? _category),

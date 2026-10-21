@@ -47,6 +47,7 @@ class ReceiptStore {
     final all = await loadAll();
     all.removeWhere((r) => r.id == receipt.id);
     await _saveAll(all);
+    if (receipt.imagePath.isEmpty) return;
     final file = File(receipt.imagePath);
     if (await file.exists()) {
       await file.delete();

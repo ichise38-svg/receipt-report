@@ -4,12 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/receipt.dart';
+import '../services/ledger_summary.dart';
 import '../services/receipt_store.dart';
+import 'receipt_detail_screen.dart';
 import 'receipt_form_screen.dart';
 import 'report_screen.dart';
-import 'receipt_detail_screen.dart';
 
-/// ホーム：レシート一覧
+/// ホーム：収支一覧（残高サマリー付き）
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -17,9 +18,12 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+enum _Filter { all, expense, income }
+
 class _HomeScreenState extends State<HomeScreen> {
-  List<Receipt> _receipts = [];
+  List<Receipt> _entries = [];
   bool _loading = true;
+  _Filter _filter = _Filter.all;
   final _currency = NumberFormat('#,##0', 'ja_JP');
   final _dateFmt = DateFormat('yyyy/MM/dd');
 
@@ -33,14 +37,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final list = await ReceiptStore.loadAll();
     if (!mounted) return;
     setState(() {
-      _receipts = list;
+      _entries = list;
       _loading = false;
     });
   }
 
-  Future<void> _openForm() async {
+  Future<void> _openForm({EntryKind kind = EntryKind.expense}) async {
     final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const ReceiptFormScreen()),
+      MaterialPageRoute(builder: (_) => ReceiptFormScreen(initialKind: kind)),
     );
     if (saved == true) _reload();
   }
@@ -52,25 +56,36 @@ class _HomeScreenState extends State<HomeScreen> {
     if (changed == true) _reload();
   }
 
+  Future<void> _openReport() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => ReportScreen(entries: _entries)));
+  }
+
+  List<Receipt> get _visible {
+    switch (_filter) {
+      case _Filter.all:
+        return _entries;
+      case _Filter.expense:
+        return _entries.where((e) => !e.isIncome).toList();
+      case _Filter.income:
+        return _entries.where((e) => e.isIncome).toList();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final total = _receipts.fold<int>(0, (s, r) => s + r.amount);
-    final scheme = Theme.of(context).colorScheme;
+    final summary = LedgerSummary.from(_entries);
+    final visible = _visible;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('レシート管理'),
+        title: const Text('収支管理'),
         actions: [
           IconButton(
             tooltip: '会計報告書を作成',
             icon: const Icon(Icons.summarize),
-            onPressed: _receipts.isEmpty
-                ? null
-                : () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ReportScreen(receipts: _receipts),
-                      ),
-                    ),
+            onPressed: _entries.isEmpty ? null : _openReport,
           ),
         ],
       ),
@@ -79,80 +94,164 @@ class _HomeScreenState extends State<HomeScreen> {
             ? const Center(child: CircularProgressIndicator())
             : Column(
                 children: [
-                  Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.all(16),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: scheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('合計（${_receipts.length}件）',
-                            style: TextStyle(color: scheme.onPrimaryContainer)),
-                        const SizedBox(height: 4),
-                        Text(
-                          '¥ ${_currency.format(total)}',
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineMedium
-                              ?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: scheme.onPrimaryContainer,
-                              ),
+                  _buildSummary(summary),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: SegmentedButton<_Filter>(
+                      segments: const [
+                        ButtonSegment(value: _Filter.all, label: Text('すべて')),
+                        ButtonSegment(
+                          value: _Filter.expense,
+                          label: Text('支出'),
                         ),
+                        ButtonSegment(value: _Filter.income, label: Text('収入')),
                       ],
+                      selected: {_filter},
+                      onSelectionChanged: (s) =>
+                          setState(() => _filter = s.first),
                     ),
                   ),
+                  const SizedBox(height: 8),
                   Expanded(
-                    child: _receipts.isEmpty
+                    child: visible.isEmpty
                         ? const Center(
-                            child: Text('レシートがありません。\n右下のボタンから登録してください。',
-                                textAlign: TextAlign.center),
+                            child: Text(
+                              '登録がありません。\n下のボタンから支出・収入を登録してください。',
+                              textAlign: TextAlign.center,
+                            ),
                           )
                         : ListView.separated(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
-                            itemCount: _receipts.length,
+                            itemCount: visible.length,
                             separatorBuilder: (_, __) =>
                                 const SizedBox(height: 8),
-                            itemBuilder: (context, i) {
-                              final r = _receipts[i];
-                              return Card(
-                                child: ListTile(
-                                  leading: ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: SizedBox(
-                                      width: 56,
-                                      height: 56,
-                                      child: File(r.imagePath).existsSync()
-                                          ? Image.file(File(r.imagePath),
-                                              fit: BoxFit.cover)
-                                          : const Icon(Icons.receipt),
-                                    ),
-                                  ),
-                                  title: Text(r.storeName),
-                                  subtitle: Text(
-                                      '${_dateFmt.format(r.date)}  ${r.category}'),
-                                  trailing: Text(
-                                    '¥${_currency.format(r.amount)}',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                  onTap: () => _openDetail(r),
-                                ),
-                              );
-                            },
+                            itemBuilder: (context, i) => _buildTile(visible[i]),
                           ),
                   ),
                 ],
               ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openForm,
-        icon: const Icon(Icons.camera_alt),
-        label: const Text('撮影・登録'),
+      floatingActionButton: _loading
+          ? null
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                FloatingActionButton.extended(
+                  heroTag: 'income',
+                  onPressed: () => _openForm(kind: EntryKind.income),
+                  icon: const Icon(Icons.add),
+                  label: const Text('収入を登録'),
+                ),
+                const SizedBox(height: 12),
+                FloatingActionButton.extended(
+                  heroTag: 'expense',
+                  onPressed: () => _openForm(kind: EntryKind.expense),
+                  icon: const Icon(Icons.camera_alt),
+                  label: const Text('レシート撮影・支出登録'),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildSummary(LedgerSummary s) {
+    final scheme = Theme.of(context).colorScheme;
+    final balanceColor = s.balance < 0
+        ? Colors.red.shade700
+        : scheme.onPrimaryContainer;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.primaryContainer,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '差引残高（${s.count}件）',
+            style: TextStyle(color: scheme.onPrimaryContainer),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '¥ ${_currency.format(s.balance)}',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: balanceColor,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _amountChip('収入', s.income, Colors.green.shade700),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _amountChip('支出', s.expense, Colors.red.shade700),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _amountChip(String label, int amount, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12)),
+          Text(
+            '¥ ${_currency.format(amount)}',
+            style: TextStyle(fontWeight: FontWeight.bold, color: color),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTile(Receipt r) {
+    final isIncome = r.isIncome;
+    final hasImage = r.imagePath.isNotEmpty && File(r.imagePath).existsSync();
+    final color = isIncome ? Colors.green.shade700 : Colors.red.shade700;
+    final sign = isIncome ? '+' : '-';
+    return Card(
+      child: ListTile(
+        leading: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            width: 56,
+            height: 56,
+            child: hasImage
+                ? Image.file(File(r.imagePath), fit: BoxFit.cover)
+                : Container(
+                    color: color.withValues(alpha: 0.12),
+                    child: Icon(
+                      isIncome ? Icons.trending_up : Icons.receipt_long,
+                      color: color,
+                    ),
+                  ),
+          ),
+        ),
+        title: Text(r.storeName),
+        subtitle: Text(
+          '${_dateFmt.format(r.date)}  ${r.kind.label}・${r.category}',
+        ),
+        trailing: Text(
+          '$sign¥${_currency.format(r.amount)}',
+          style: TextStyle(fontWeight: FontWeight.bold, color: color),
+        ),
+        onTap: () => _openDetail(r),
       ),
     );
   }
