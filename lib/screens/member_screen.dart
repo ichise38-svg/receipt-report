@@ -86,9 +86,7 @@ class _MemberScreenState extends State<MemberScreen> {
       _toast('氏名を入力してください。');
       return;
     }
-    await MemberStore.upsert(
-      Member(id: target?.id, name: name, note: note),
-    );
+    await MemberStore.upsert(Member(id: target?.id, name: name, note: note));
     await _reload();
   }
 
@@ -200,7 +198,10 @@ class _MemberScreenState extends State<MemberScreen> {
               }
             },
             itemBuilder: (_) => const [
-              PopupMenuItem(value: 'file', child: Text('ファイルから読込（CSV/TXT/Excel）')),
+              PopupMenuItem(
+                value: 'file',
+                child: Text('ファイルから読込（CSV/TXT/Excel）'),
+              ),
               PopupMenuItem(value: 'camera', child: Text('名簿を撮影して保存')),
               PopupMenuItem(value: 'gallery', child: Text('名簿の写真を選択して保存')),
             ],

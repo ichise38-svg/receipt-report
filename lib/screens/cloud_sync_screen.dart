@@ -1,16 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../models/member.dart';
-import '../models/receipt.dart';
 import '../services/cloud_sync_service.dart';
-import '../services/member_store.dart';
 
-/// クラウド連携：送信先の設定と、期間を指定した手動送信
+/// 会員同期：接続先と合言葉の設定、ボタン1つで送受信
 class CloudSyncScreen extends StatefulWidget {
-  final List<Receipt> entries;
-
-  const CloudSyncScreen({super.key, required this.entries});
+  const CloudSyncScreen({super.key});
 
   @override
   State<CloudSyncScreen> createState() => _CloudSyncScreenState();
@@ -19,24 +14,15 @@ class CloudSyncScreen extends StatefulWidget {
 class _CloudSyncScreenState extends State<CloudSyncScreen> {
   final _endpointCtrl = TextEditingController();
   final _tokenCtrl = TextEditingController();
-  final _titleCtrl = TextEditingController(text: '経費精算');
-  final _dateFmt = DateFormat('yyyy/MM/dd');
-  final _currency = NumberFormat('#,##0', 'ja_JP');
+  final _dateFmt = DateFormat('yyyy/MM/dd HH:mm');
 
-  late DateTime _from;
-  late DateTime _to;
   bool _loading = true;
   bool _busy = false;
   DateTime? _lastSynced;
-  List<Member> _members = [];
 
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    final dates = widget.entries.map((e) => e.date).toList()..sort();
-    _from = dates.isEmpty ? DateTime(now.year, now.month, 1) : dates.first;
-    _to = dates.isEmpty ? now : dates.last;
     _load();
   }
 
@@ -44,7 +30,6 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
   void dispose() {
     _endpointCtrl.dispose();
     _tokenCtrl.dispose();
-    _titleCtrl.dispose();
     super.dispose();
   }
 
@@ -52,17 +37,8 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
     _endpointCtrl.text = await CloudSyncService.getEndpoint();
     _tokenCtrl.text = await CloudSyncService.getToken();
     _lastSynced = await CloudSyncService.lastSyncedAt();
-    _members = await MemberStore.loadAll();
     if (!mounted) return;
     setState(() => _loading = false);
-  }
-
-  List<Receipt> get _target {
-    final start = DateTime(_from.year, _from.month, _from.day);
-    final end = DateTime(_to.year, _to.month, _to.day, 23, 59, 59);
-    return widget.entries
-        .where((e) => !e.date.isBefore(start) && !e.date.isAfter(end))
-        .toList();
   }
 
   void _toast(String msg) {
@@ -75,7 +51,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
       endpoint: _endpointCtrl.text,
       token: _tokenCtrl.text,
     );
-    _toast('送信先を保存しました。');
+    _toast('設定を保存しました。');
   }
 
   Future<void> _ping() async {
@@ -93,60 +69,29 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
     }
   }
 
-  Future<void> _upload() async {
-    final list = _target;
-    if (list.isEmpty) {
-      _toast('送信対象の登録がありません。');
-      return;
-    }
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('クラウドへ送信しますか？'),
-        content: Text('${list.length}件（画像は縮小して送信）を送信します。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('キャンセル'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('送信'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-
+  Future<void> _sync() async {
     await _saveSettings();
     setState(() => _busy = true);
     try {
-      final count = await CloudSyncService.upload(
-        entries: list,
-        title: _titleCtrl.text.trim().isEmpty ? '経費精算' : _titleCtrl.text.trim(),
-        from: _from,
-        to: _to,
-        participants: _members.length,
-        participantNames: _members.map((m) => m.name).toList(),
-      );
+      final r = await CloudSyncService.sync();
       _lastSynced = await CloudSyncService.lastSyncedAt();
-      _toast('$count件を送信しました。');
+      _toast(
+        '同期しました。送信 ${r.sentReceipts}件（画像${r.sentImages}件）'
+        '／受信 ${r.receivedChanges}件の変更',
+      );
     } on CloudSyncException catch (e) {
       _toast(e.message);
     } catch (_) {
-      _toast('送信に失敗しました。通信状態を確認してください。');
+      _toast('同期に失敗しました。通信状態を確認してください。');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    final target = _target;
-    final total = target.fold<int>(0, (s, e) => e.isIncome ? s : s + e.amount);
     return Scaffold(
-      appBar: AppBar(title: const Text('クラウド連携')),
+      appBar: AppBar(title: const Text('会員同期')),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -154,15 +99,15 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   const Text(
-                    '送信先（Google Apps Script / Cloudflare Worker など）',
+                    '会員全員が同じ接続先と合言葉を設定してください。',
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: _endpointCtrl,
                     keyboardType: TextInputType.url,
                     decoration: const InputDecoration(
-                      labelText: '送信先URL（https://...）',
+                      labelText: '接続先URL（https://...）',
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -171,9 +116,8 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                     controller: _tokenCtrl,
                     obscureText: true,
                     decoration: const InputDecoration(
-                      labelText: 'アクセスキー（任意）',
+                      labelText: '合言葉',
                       border: OutlineInputBorder(),
-                      helperText: '送信データに含めて照合します',
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -195,83 +139,31 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                     ],
                   ),
                   const Divider(height: 32),
-                  const Text(
-                    '送信内容',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _titleCtrl,
-                    decoration: const InputDecoration(
-                      labelText: '報告書のタイトル',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () async {
-                            final p = await showDatePicker(
-                              context: context,
-                              initialDate: _from,
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2100),
-                              locale: const Locale('ja'),
-                            );
-                            if (p != null) setState(() => _from = p);
-                          },
-                          child: Text('開始 ${_dateFmt.format(_from)}'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () async {
-                            final p = await showDatePicker(
-                              context: context,
-                              initialDate: _to,
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2100),
-                              locale: const Locale('ja'),
-                            );
-                            if (p != null) setState(() => _to = p);
-                          },
-                          child: Text('終了 ${_dateFmt.format(_to)}'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Card(
-                    child: ListTile(
-                      title: Text('送信対象 ${target.length}件'),
-                      subtitle: Text('支出合計 ¥${_currency.format(total)}'),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
                   Text(
                     _lastSynced == null
-                        ? '最終送信: まだありません'
-                        : '最終送信: ${DateFormat('yyyy/MM/dd HH:mm').format(_lastSynced!)}',
+                        ? '最終同期: まだありません'
+                        : '最終同期: ${_dateFmt.format(_lastSynced!)}',
                     style: const TextStyle(color: Colors.grey),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   FilledButton.icon(
-                    onPressed: _busy ? null : _upload,
+                    onPressed: _busy ? null : _sync,
                     icon: _busy
                         ? const SizedBox(
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.cloud_upload),
-                    label: Text(_busy ? '送信中...' : 'クラウドへ送信'),
+                        : const Icon(Icons.sync),
+                    label: Text(_busy ? '同期中...' : '今すぐ同期'),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 16),
                   const Text(
-                    '※ 送信は手動のみです。自動同期は行いません（通信量の節約のため）。',
+                    '・同期は手動のみです（通信量と費用の節約のため）。\n'
+                    '・送信と受信を同時に行います。変更の多い方は、同期前に入力内容を確認してください。\n'
+                    '・同じ項目を複数人が編集した場合は、最後に保存した内容が残ります。\n'
+                    '・削除は全員の端末に反映されます。\n'
+                    '・参加者名簿の写真は同期されず、各端末に残ります。',
                     style: TextStyle(color: Colors.grey, fontSize: 12),
                   ),
                 ],

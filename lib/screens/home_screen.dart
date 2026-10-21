@@ -49,6 +49,13 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _openSync() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const CloudSyncScreen()));
+    _reload();
+  }
+
   Future<void> _openMembers() async {
     await Navigator.of(
       context,
@@ -89,10 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final summary = LedgerSummary.from(
-      _entries,
-      participants: _members.length,
-    );
+    final summary = LedgerSummary.from(_entries, participants: _members.length);
     final visible = _visible;
 
     return Scaffold(
@@ -105,15 +109,9 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: _openMembers,
           ),
           IconButton(
-            tooltip: 'クラウド連携',
-            icon: const Icon(Icons.cloud_sync),
-            onPressed: _entries.isEmpty
-                ? null
-                : () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => CloudSyncScreen(entries: _entries),
-                    ),
-                  ),
+            tooltip: '会員同期',
+            icon: const Icon(Icons.sync),
+            onPressed: _openSync,
           ),
           IconButton(
             tooltip: '会計報告書を作成',

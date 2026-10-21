@@ -1,5 +1,19 @@
 import 'package:uuid/uuid.dart';
 
+/// 同期用：UTC・ミリ秒精度の文字列（Apps Script 側の比較と揃える）
+String isoMillis(DateTime d) {
+  final u = d.toUtc();
+  return DateTime.utc(
+    u.year,
+    u.month,
+    u.day,
+    u.hour,
+    u.minute,
+    u.second,
+    u.millisecond,
+  ).toIso8601String();
+}
+
 /// 経費カテゴリ（支出）
 const List<String> receiptCategories = [
   '交通費',
@@ -34,16 +48,23 @@ enum EntryKind {
 }
 
 /// 収支1件分のデータ（支出はレシート画像あり、収入は画像なしも可）
+///
+/// - 削除は tombstone（deleted = true）として残し、同期時に他の端末へ削除を伝えます。
+/// - 変更日時 updatedAt が新しい方を優先します（最後の更新優先）。
+/// - imageUrl は共有先に保存済みの画像URL。空なら未送信またはなし。
 class Receipt {
   final String id;
   final EntryKind kind;
-  final String imagePath; // 画像なしの場合は空文字
+  final String imagePath; // 端末内の画像パス。画像なしは空文字
   final String storeName; // 支出: 店舗名 / 収入: 取引先・摘要
   final DateTime date;
   final int amount; // 税込合計（円）
   final String category;
   final String memo;
   final DateTime createdAt;
+  final DateTime updatedAt;
+  final bool deleted;
+  final String imageUrl;
 
   Receipt({
     String? id,
@@ -55,10 +76,42 @@ class Receipt {
     required this.category,
     this.memo = '',
     DateTime? createdAt,
+    DateTime? updatedAt,
+    this.deleted = false,
+    this.imageUrl = '',
   }) : id = id ?? const Uuid().v4(),
-       createdAt = createdAt ?? DateTime.now();
+       createdAt = createdAt ?? DateTime.now(),
+       updatedAt = updatedAt ?? DateTime.now();
 
   bool get isIncome => kind == EntryKind.income;
+
+  Receipt copyWith({
+    EntryKind? kind,
+    String? imagePath,
+    String? storeName,
+    DateTime? date,
+    int? amount,
+    String? category,
+    String? memo,
+    DateTime? updatedAt,
+    bool? deleted,
+    String? imageUrl,
+  }) {
+    return Receipt(
+      id: id,
+      kind: kind ?? this.kind,
+      imagePath: imagePath ?? this.imagePath,
+      storeName: storeName ?? this.storeName,
+      date: date ?? this.date,
+      amount: amount ?? this.amount,
+      category: category ?? this.category,
+      memo: memo ?? this.memo,
+      createdAt: createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deleted: deleted ?? this.deleted,
+      imageUrl: imageUrl ?? this.imageUrl,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -70,9 +123,14 @@ class Receipt {
     'category': category,
     'memo': memo,
     'createdAt': createdAt.toIso8601String(),
+    'updatedAt': isoMillis(updatedAt),
+    'deleted': deleted,
+    'imageUrl': imageUrl,
   };
 
   factory Receipt.fromJson(Map<String, dynamic> json) {
+    final createdAt =
+        DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now();
     return Receipt(
       id: json['id'] as String,
       kind: EntryKind.fromName(json['kind'] as String?),
@@ -82,9 +140,11 @@ class Receipt {
       amount: (json['amount'] as num?)?.toInt() ?? 0,
       category: json['category'] as String? ?? 'その他',
       memo: json['memo'] as String? ?? '',
-      createdAt:
-          DateTime.tryParse(json['createdAt'] as String? ?? '') ??
-          DateTime.now(),
+      createdAt: createdAt,
+      updatedAt:
+          DateTime.tryParse(json['updatedAt'] as String? ?? '') ?? createdAt,
+      deleted: json['deleted'] as bool? ?? false,
+      imageUrl: json['imageUrl'] as String? ?? '',
     );
   }
 }

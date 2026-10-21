@@ -271,7 +271,9 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
     final before = _baseIncome - _baseExpense;
     final isIncome = _kind == EntryKind.income;
     final after = before + (isIncome ? amount : -amount);
-    final afterColor = after < 0 ? Colors.red.shade700 : scheme.onSecondaryContainer;
+    final afterColor = after < 0
+        ? Colors.red.shade700
+        : scheme.onSecondaryContainer;
     final textStyle = TextStyle(color: scheme.onSecondaryContainer);
 
     return Card(

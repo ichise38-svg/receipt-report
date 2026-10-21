@@ -6,22 +6,28 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/member.dart';
 import 'receipt_store.dart';
 
-/// 参加者名簿の保存（SharedPreferences）と名簿の写真（アプリ内ファイル）
+/// 参加者名簿の保存（SharedPreferences）と名簿の写真（端末内のみ・同期しない）
+///
+/// 削除済み（tombstone）も含めた全件は loadRaw()。画面表示は loadAll()。
 class MemberStore {
   static const _key = 'members_v1';
   static const _photoKey = 'roster_photos_v1';
 
-  static Future<List<Member>> loadAll() async {
+  /// 同期用：削除済みを含む全件
+  static Future<List<Member>> loadRaw() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_key);
     if (raw == null || raw.isEmpty) return [];
     final list = jsonDecode(raw) as List<dynamic>;
-    return list
-        .map((e) => Member.fromJson(e as Map<String, dynamic>))
-        .toList();
+    return list.map((e) => Member.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  static Future<void> _saveAll(List<Member> members) async {
+  /// 表示用：削除済みを除く
+  static Future<List<Member>> loadAll() async {
+    return (await loadRaw()).where((m) => !m.deleted).toList();
+  }
+
+  static Future<void> _saveRaw(List<Member> members) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _key,
@@ -30,26 +36,28 @@ class MemberStore {
   }
 
   static Future<void> upsert(Member member) async {
-    final all = await loadAll();
+    final all = await loadRaw();
     final index = all.indexWhere((m) => m.id == member.id);
     if (index >= 0) {
-      all[index] = member;
+      all[index] = member.copyWith(updatedAt: DateTime.now());
     } else {
       all.add(member);
     }
-    await _saveAll(all);
+    await _saveRaw(all);
   }
 
   static Future<void> delete(String id) async {
-    final all = await loadAll();
-    all.removeWhere((m) => m.id == id);
-    await _saveAll(all);
+    final all = await loadRaw();
+    final index = all.indexWhere((m) => m.id == id);
+    if (index < 0) return;
+    all[index] = all[index].copyWith(deleted: true, updatedAt: DateTime.now());
+    await _saveRaw(all);
   }
 
   /// ファイル読込用：同名は追加しない。追加件数を返す
   static Future<int> addNames(List<String> names) async {
-    final all = await loadAll();
-    final existing = all.map((m) => m.name).toSet();
+    final all = await loadRaw();
+    final existing = all.where((m) => !m.deleted).map((m) => m.name).toSet();
     var added = 0;
     for (final raw in names) {
       final name = raw.trim();
@@ -58,12 +66,34 @@ class MemberStore {
       existing.add(name);
       added++;
     }
-    await _saveAll(all);
+    await _saveRaw(all);
     return added;
   }
 
+  /// 全員分を削除（tombstone にして同期で反映）
   static Future<void> clearAll() async {
-    await _saveAll([]);
+    final all = await loadRaw();
+    final now = DateTime.now();
+    final cleared = all
+        .map((m) => m.deleted ? m : m.copyWith(deleted: true, updatedAt: now))
+        .toList();
+    await _saveRaw(cleared);
+  }
+
+  /// 同期で受け取った内容を反映する。ローカルの方が新しければ何もしない。
+  static Future<bool> applyRemote(Member remote) async {
+    final all = await loadRaw();
+    final index = all.indexWhere((m) => m.id == remote.id);
+    if (index >= 0 && !all[index].updatedAt.isBefore(remote.updatedAt)) {
+      return false;
+    }
+    if (index >= 0) {
+      all[index] = remote;
+    } else {
+      all.add(remote);
+    }
+    await _saveRaw(all);
+    return true;
   }
 
   static Future<List<String>> loadRosterPhotos() async {

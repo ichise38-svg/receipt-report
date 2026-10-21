@@ -28,8 +28,7 @@ class LedgerSummary {
       participants > 0 ? expense ~/ participants : null;
 
   /// 1人あたりの収入（小数点以下切り捨て）。参加人数が0なら null
-  int? get incomePerPerson =>
-      participants > 0 ? income ~/ participants : null;
+  int? get incomePerPerson => participants > 0 ? income ~/ participants : null;
 
   factory LedgerSummary.from(List<Receipt> entries, {int participants = 0}) {
     int income = 0;

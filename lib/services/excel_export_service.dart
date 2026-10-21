@@ -29,10 +29,7 @@ class ExcelExportService {
     final summarySheet = excel['サマリー'];
     final detailSheet = excel['明細'];
     excel.delete('Sheet1');
-    final summaryData = LedgerSummary.from(
-      entries,
-      participants: participants,
-    );
+    final summaryData = LedgerSummary.from(entries, participants: participants);
 
     final bold = CellStyle(bold: true);
     final header = CellStyle(
@@ -223,9 +220,7 @@ class ExcelExportService {
     // ---------- 名簿シート（名簿がある場合のみ） ----------
     if (participantNames.isNotEmpty) {
       final rosterSheet = excel['参加者名簿'];
-      rosterSheet.appendRow(
-        ['No.', '氏名'].map(TextCellValue.new).toList(),
-      );
+      rosterSheet.appendRow(['No.', '氏名'].map(TextCellValue.new).toList());
       for (var c = 0; c < 2; c++) {
         rosterSheet
                 .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0))

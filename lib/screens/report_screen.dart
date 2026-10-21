@@ -191,7 +191,10 @@ class _ReportScreenState extends State<ReportScreen> {
                               padding: EdgeInsets.only(top: 4),
                               child: Text(
                                 '※名簿が未登録のため人数は0名です。ホーム右上の名簿から登録できます。',
-                                style: TextStyle(fontSize: 12, color: Colors.orange),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.orange,
+                                ),
                               ),
                             ),
                         ],
