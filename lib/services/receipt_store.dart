@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/receipt.dart';
+import 'receipt_merge.dart';
 
 /// レシートの保存・読み込み（SharedPreferences + アプリ内の画像ファイル）
 ///
@@ -56,6 +57,33 @@ class ReceiptStore {
       all.add(toSave);
     }
     await _saveRaw(all);
+  }
+
+  /// 撮影・入力の保存。同じ内容（区分・日付・店舗名・金額）が既にあれば二重に作らず、
+  /// 写真やイベント名だけを既存明細に反映する。編集中（同じID）はそのまま更新する。
+  static Future<SaveOutcome> saveMerged(Receipt draft) async {
+    final all = await loadRaw();
+    final sameId = all.indexWhere((r) => r.id == draft.id);
+    if (sameId >= 0) {
+      // 修正（同じID）はそのまま上書き
+      await upsert(draft);
+      return SaveOutcome.updated;
+    }
+    final existing = ReceiptMerge.findDuplicate(all, draft);
+    final plan = ReceiptMerge.plan(existing, draft);
+    if (plan.outcome == SaveOutcome.created) {
+      await upsert(draft);
+      return SaveOutcome.created;
+    }
+    if (plan.discardDraftImage) {
+      await _deleteImageFile(draft.imagePath);
+    }
+    if (plan.updated != null) {
+      final index = all.indexWhere((r) => r.id == existing!.id);
+      all[index] = plan.updated!;
+      await _saveRaw(all);
+    }
+    return plan.outcome;
   }
 
   /// ファイル取り込み用：まとめて追加（画像なし）

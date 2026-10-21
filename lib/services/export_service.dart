@@ -425,6 +425,38 @@ class ExportService {
       ),
     );
 
+    // イベントの支出で写真があるものは1件1ページで添付（日付順）
+    final photoEntries = report.entries.where((r) => r.imagePath.isNotEmpty);
+    for (final r in photoEntries) {
+      final bytes = await _readBytes(r.imagePath);
+      if (bytes == null) continue;
+      final image = pw.MemoryImage(bytes);
+      doc.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          theme: theme,
+          margin: const pw.EdgeInsets.all(32),
+          build: (ctx) => pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              _infoRow('区分', r.kind.label),
+              _infoRow('日付', _dateFmt.format(r.date)),
+              _infoRow(r.isIncome ? '摘要' : '店舗名', r.storeName),
+              _infoRow('金額', '${_currency.format(r.amount)} 円'),
+              _infoRow('カテゴリ', r.category),
+              if (r.memo.isNotEmpty) _infoRow('メモ', r.memo),
+              pw.SizedBox(height: 12),
+              pw.Expanded(
+                child: pw.Center(
+                  child: pw.Image(image, fit: pw.BoxFit.contain),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final safeName = report.eventName.replaceAll(
       RegExp(r'[\\/:*?"<>|\s]'),
       '_',

@@ -20,6 +20,7 @@ import 'report_screen.dart';
 import 'settings_screen.dart';
 import '../widgets/quick_entry_panel.dart';
 import '../services/event_report.dart';
+import '../services/receipt_merge.dart';
 
 /// ホーム：収支一覧（残高サマリー付き）
 class HomeScreen extends StatefulWidget {
@@ -135,10 +136,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _openForm({EntryKind kind = EntryKind.expense}) async {
-    final saved = await Navigator.of(context).push<bool>(
+    final outcome = await Navigator.of(context).push<SaveOutcome>(
       MaterialPageRoute(builder: (_) => ReceiptFormScreen(initialKind: kind)),
     );
-    if (saved == true) _reload();
+    if (outcome != null) {
+      _reload();
+      if (mounted && outcome != SaveOutcome.created) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(saveMessage(outcome))));
+      }
+    }
   }
 
   Future<void> _openDetail(Receipt r) async {

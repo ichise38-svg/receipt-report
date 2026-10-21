@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/receipt.dart';
+import '../services/receipt_merge.dart';
 import '../services/receipt_store.dart';
 
 /// ホーム画面に置く簡易入力パネル（画像なし・手入力）
@@ -86,14 +87,14 @@ class _QuickEntryPanelState extends State<QuickEntryPanel> {
         memo: _memoCtrl.text.trim(),
         event: _eventCtrl.text.trim(),
       );
-      await ReceiptStore.upsert(receipt);
+      final outcome = await ReceiptStore.saveMerged(receipt);
       if (!mounted) return;
       _clear();
       setState(() => _saving = false);
       widget.onSaved();
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('保存しました')));
+        ..showSnackBar(SnackBar(content: Text(saveMessage(outcome))));
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);

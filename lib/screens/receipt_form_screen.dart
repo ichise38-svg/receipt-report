@@ -149,9 +149,10 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
         event: _eventCtrl.text.trim(),
         createdAt: widget.receipt?.createdAt,
       );
-      await ReceiptStore.upsert(receipt);
+      final outcome = await ReceiptStore.saveMerged(receipt);
       if (!mounted) return;
-      Navigator.of(context).pop(true);
+      // 結果は呼び出し元（一覧）で案内する
+      Navigator.of(context).pop(outcome);
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../models/receipt.dart';
 import '../services/export_service.dart';
+import '../services/receipt_merge.dart';
 import '../services/receipt_store.dart';
 import 'receipt_form_screen.dart';
 
@@ -25,10 +26,10 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
   final _dateFmt = DateFormat('yyyy/MM/dd');
 
   Future<void> _edit() async {
-    final saved = await Navigator.of(context).push<bool>(
+    final saved = await Navigator.of(context).push<SaveOutcome>(
       MaterialPageRoute(builder: (_) => ReceiptFormScreen(receipt: _receipt)),
     );
-    if (saved == true) {
+    if (saved != null) {
       final list = await ReceiptStore.loadAll();
       final updated = list.where((r) => r.id == _receipt.id).firstOrNull;
       if (updated != null && mounted) {
