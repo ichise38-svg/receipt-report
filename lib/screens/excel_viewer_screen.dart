@@ -53,6 +53,13 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
   int? _selectedCol;
   final _hScroll = ScrollController();
   final _vScroll = ScrollController();
+  // グリッドの拡大率（ピンチ・ボタンで変更）
+  double _zoom = 1.0;
+  static const _minZoom = 0.5;
+  static const _maxZoom = 3.0;
+  final Map<int, Offset> _pointers = {};
+  double? _pinchStartDist;
+  double _pinchStartZoom = 1.0;
 
   @override
   void initState() {
@@ -337,25 +344,113 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
   }
 
   Widget _buildGrid() {
-    final totalWidth = _rowHeaderWidth + _colWidths.reduce((a, b) => a + b);
+    final totalWidth =
+        (_rowHeaderWidth + _colWidths.reduce((a, b) => a + b)) * _zoom;
     final rowCount = _maxRow() + 1;
-    return Scrollbar(
-      controller: _vScroll,
-      child: SingleChildScrollView(
-        controller: _vScroll,
-        child: SingleChildScrollView(
-          controller: _hScroll,
-          scrollDirection: Axis.horizontal,
-          child: SizedBox(
-            width: totalWidth,
-            child: Column(
-              children: [
-                _gridHeader(),
-                for (var r = 0; r < rowCount; r++) _gridRow(r),
-              ],
+    return Stack(
+      children: [
+        Listener(
+          onPointerDown: _onPointerDown,
+          onPointerMove: _onPointerMove,
+          onPointerUp: _onPointerUp,
+          onPointerCancel: _onPointerUp,
+          child: Scrollbar(
+            controller: _vScroll,
+            child: SingleChildScrollView(
+              controller: _vScroll,
+              child: SingleChildScrollView(
+                controller: _hScroll,
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: totalWidth,
+                  child: Column(
+                    children: [
+                      _gridHeader(),
+                      for (var r = 0; r < rowCount; r++) _gridRow(r),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
         ),
+        Positioned(right: 8, bottom: 8, child: _zoomControls()),
+      ],
+    );
+  }
+
+  // ---- ピンチ拡大縮小 ----
+  void _onPointerDown(PointerDownEvent e) {
+    _pointers[e.pointer] = e.localPosition;
+    if (_pointers.length == 2) {
+      _pinchStartDist = _pointerDistance();
+      _pinchStartZoom = _zoom;
+    }
+  }
+
+  void _onPointerMove(PointerMoveEvent e) {
+    if (!_pointers.containsKey(e.pointer)) return;
+    _pointers[e.pointer] = e.localPosition;
+    if (_pointers.length == 2 && _pinchStartDist != null) {
+      final d = _pointerDistance();
+      if (_pinchStartDist! > 0) {
+        _setZoom(_pinchStartZoom * d / _pinchStartDist!);
+      }
+    }
+  }
+
+  void _onPointerUp(PointerEvent e) {
+    _pointers.remove(e.pointer);
+    if (_pointers.length < 2) _pinchStartDist = null;
+  }
+
+  double _pointerDistance() {
+    final pts = _pointers.values.toList();
+    return (pts[0] - pts[1]).distance;
+  }
+
+  void _setZoom(double z) {
+    final clamped = z.clamp(_minZoom, _maxZoom).toDouble();
+    if ((clamped - _zoom).abs() < 0.001) return;
+    setState(() => _zoom = clamped);
+  }
+
+  Widget _zoomControls() {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surface.withValues(alpha: 0.9),
+      elevation: 2,
+      borderRadius: BorderRadius.circular(8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: '縮小',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.zoom_out),
+            onPressed: _zoom <= _minZoom ? null : () => _setZoom(_zoom - 0.25),
+          ),
+          SizedBox(
+            width: 48,
+            child: Text(
+              '${(_zoom * 100).round()}%',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+          IconButton(
+            tooltip: '拡大',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.zoom_in),
+            onPressed: _zoom >= _maxZoom ? null : () => _setZoom(_zoom + 0.25),
+          ),
+          IconButton(
+            tooltip: '100%に戻す',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.restart_alt),
+            onPressed: _zoom == 1.0 ? null : () => _setZoom(1.0),
+          ),
+        ],
       ),
     );
   }
@@ -371,9 +466,14 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
   Widget _gridHeader() {
     return Row(
       children: [
-        _box(_rowHeaderWidth, 28, '', header: true),
+        _box(_rowHeaderWidth * _zoom, 28 * _zoom, '', header: true),
         for (var c = 0; c < _colWidths.length; c++)
-          _box(_colWidths[c], 28, excelColumnName(c), header: true),
+          _box(
+            _colWidths[c] * _zoom,
+            28 * _zoom,
+            excelColumnName(c),
+            header: true,
+          ),
       ],
     );
   }
@@ -383,8 +483,8 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
     return Row(
       children: [
         _box(
-          _rowHeaderWidth,
-          _rowHeight,
+          _rowHeaderWidth * _zoom,
+          _rowHeight * _zoom,
           '${r + 1}',
           header: true,
           highlight: rowSelected,
@@ -415,10 +515,10 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
     return InkWell(
       onTap: !isCell ? null : () => _select(r, c),
       child: Container(
-        width: _colWidths[c],
-        height: _rowHeight,
+        width: _colWidths[c] * _zoom,
+        height: _rowHeight * _zoom,
         alignment: isRight ? Alignment.centerRight : Alignment.centerLeft,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
+        padding: EdgeInsets.symmetric(horizontal: 6 * _zoom),
         decoration: BoxDecoration(
           color: bg,
           border: Border.all(
@@ -431,7 +531,7 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize: 12,
+            fontSize: 12 * _zoom,
             fontWeight: isHeader ? FontWeight.bold : FontWeight.normal,
             color: isFormula ? Colors.teal.shade700 : null,
           ),
@@ -459,7 +559,7 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
       ),
       child: Text(
         text,
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+        style: TextStyle(fontSize: 12 * _zoom, fontWeight: FontWeight.bold),
       ),
     );
   }
