@@ -11,6 +11,7 @@ import '../services/member_store.dart';
 import '../services/receipt_store.dart';
 import 'chart_screen.dart';
 import 'event_report_screen.dart';
+import 'excel_viewer_screen.dart';
 import 'ledger_file_screen.dart';
 import 'receipt_detail_screen.dart';
 import 'member_screen.dart';
@@ -154,6 +155,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     ).push(MaterialPageRoute(builder: (_) => const ChartScreen()));
   }
 
+  Future<void> _openExcelViewer() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ExcelViewerScreen()));
+    _reload();
+  }
+
   Future<void> _openLedgerFile() async {
     final imported = await Navigator.of(
       context,
@@ -213,6 +221,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             icon: const Icon(Icons.bar_chart),
             onPressed: _openChart,
           ),
+
           PopupMenuButton<String>(
             tooltip: 'ファイル',
             icon: const Icon(Icons.folder_open),
@@ -344,6 +353,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ],
           ),
           const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: _openExcelViewer,
+              icon: const Icon(Icons.table_chart, size: 18),
+              label: const Text('Excelでどのセルに入るか見る'),
+            ),
+          ),
           InkWell(
             onTap: _openMembers,
             borderRadius: BorderRadius.circular(10),
