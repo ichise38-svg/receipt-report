@@ -1,5 +1,6 @@
-package com.receiptreport.receipt_report
+package com.receiptreport.expense
 
 import io.flutter.embedding.android.FlutterActivity
 
 class MainActivity : FlutterActivity()
+
