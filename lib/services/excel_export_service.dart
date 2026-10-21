@@ -20,6 +20,12 @@ class ExcelExportService {
   static const _headers = ['月日', '摘要', '収入', '支出', '収支', '残高', '備考'];
 
   /// 収支報告書のExcelバイト列を生成（共有は行わない）
+  /// 共有・表示で使うファイル名（例: 収支報告書_経費精算.xlsx）
+  static String fileNameFor(String title) {
+    final safe = title.trim().replaceAll(RegExp(r'[\\/:*?"<>|\s]'), '_');
+    return '収支報告書_$safe.xlsx';
+  }
+
   static List<int> buildWorkbook({
     required String mainTitle,
     required String title,
@@ -36,8 +42,9 @@ class ExcelExportService {
       carryCash: carryCash,
       carryBank: carryBank,
     );
+    const sheetName = '収支報告書';
     final excel = Excel.createExcel();
-    final sheet = excel['収支報告書'];
+    final sheet = excel[sheetName];
     excel.delete('Sheet1');
 
     final bold = CellStyle(bold: true);
@@ -56,6 +63,7 @@ class ExcelExportService {
       numberFormat: NumFormat.standard_3,
     );
     final titleStyle = CellStyle(bold: true, fontSize: 16);
+    final small = CellStyle(fontSize: 9);
 
     void put(int col, int row, CellValue value, {CellStyle? style}) {
       final cell = sheet.cell(
@@ -86,6 +94,13 @@ class ExcelExportService {
       TextCellValue('対象期間: ${_dateFmt.format(from)} 〜 ${_dateFmt.format(to)}'),
     );
     put(3, 2, TextCellValue('作成日: ${_dateFmt.format(DateTime.now())}'));
+    // 4行目：いま開いているファイル名とシート名
+    put(
+      0,
+      3,
+      TextCellValue('ファイル: ${fileNameFor(title)} ／ シート: $sheetName'),
+      style: small,
+    );
 
     for (var c = 0; c < _headers.length; c++) {
       put(c, _headerRow, TextCellValue(_headers[c]), style: header);
@@ -233,13 +248,12 @@ class ExcelExportService {
       carryCash: carryCash,
       carryBank: carryBank,
     );
-    final safeTitle = title.replaceAll(RegExp(r'[\\/:*?"<>|\s]'), '_');
     await SharePlus.instance.share(
       ShareParams(
         files: [
           XFile.fromData(
             Uint8List.fromList(bytes),
-            name: '収支報告書_$safeTitle.xlsx',
+            name: fileNameFor(title),
             mimeType:
                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           ),

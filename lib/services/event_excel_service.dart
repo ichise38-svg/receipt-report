@@ -13,6 +13,12 @@ import 'event_report.dart';
 class EventExcelService {
   static final _dateFmt = DateFormat('yyyy/MM/dd');
 
+  /// 共有・表示で使うファイル名（例: 会計報告書_25忘年会.xlsx）
+  static String fileNameFor(String eventName) {
+    final safe = eventName.trim().replaceAll(RegExp(r'[\\/:*?"<>|\s]'), '_');
+    return '会計報告書_$safe.xlsx';
+  }
+
   static List<int> buildWorkbook({
     required String mainTitle,
     required String eventName,
@@ -20,12 +26,14 @@ class EventExcelService {
     required int participants,
   }) {
     final report = EventReport.build(entries, eventName);
+    const sheetName = '会計報告書';
     final excel = Excel.createExcel();
-    final sheet = excel['会計報告書'];
+    final sheet = excel[sheetName];
     excel.delete('Sheet1');
 
     final bold = CellStyle(bold: true);
     final title = CellStyle(bold: true, fontSize: 16);
+    final small = CellStyle(fontSize: 9);
     final header = CellStyle(
       bold: true,
       backgroundColorHex: ExcelColor.fromHexString('FFE3F2FD'),
@@ -77,6 +85,14 @@ class EventExcelService {
           : '${_dateFmt.format(report.firstDate!)} 〜 ${_dateFmt.format(report.lastDate!)}';
       text(0, 2, '期間: $period');
     }
+
+    // 4行目：いま開いているファイル名とシート名
+    text(
+      0,
+      3,
+      'ファイル: ${fileNameFor(eventName)} ／ シート: $sheetName',
+      style: small,
+    );
 
     // ---------- 収入の部 ----------
     var row = 4;
@@ -193,16 +209,12 @@ class EventExcelService {
       entries: entries,
       participants: participants,
     );
-    final safeName = eventName.trim().replaceAll(
-      RegExp(r'[\\/:*?"<>|\s]'),
-      '_',
-    );
     await SharePlus.instance.share(
       ShareParams(
         files: [
           XFile.fromData(
             Uint8List.fromList(bytes),
-            name: '会計報告書_$safeName.xlsx',
+            name: fileNameFor(eventName),
             mimeType:
                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           ),
