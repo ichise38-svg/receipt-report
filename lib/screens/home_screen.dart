@@ -18,6 +18,8 @@ import 'member_screen.dart';
 import 'receipt_form_screen.dart';
 import 'report_screen.dart';
 import 'settings_screen.dart';
+import '../widgets/quick_entry_panel.dart';
+import '../services/event_report.dart';
 
 /// ホーム：収支一覧（残高サマリー付き）
 class HomeScreen extends StatefulWidget {
@@ -36,6 +38,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<Member> _members = [];
   bool _loading = true;
   _Filter _filter = _Filter.all;
+  bool _showWorkPanel = true;
+  int _refreshTick = 0; // 入力・保存のたびにビューワーを再計算する
   final _currency = NumberFormat('#,##0', 'ja_JP');
   final _dateFmt = DateFormat('yyyy/MM/dd');
 
@@ -119,6 +123,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _entries = list;
       _members = members;
       _loading = false;
+      _refreshTick++;
     });
   }
 
@@ -153,13 +158,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const ChartScreen()));
-  }
-
-  Future<void> _openExcelViewer() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const ExcelViewerScreen()));
-    _reload();
   }
 
   Future<void> _openLedgerFile() async {
@@ -249,42 +247,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
-            : Column(
-                children: [
-                  _buildSummary(summary),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: SegmentedButton<_Filter>(
-                      segments: const [
-                        ButtonSegment(value: _Filter.all, label: Text('すべて')),
-                        ButtonSegment(
-                          value: _Filter.expense,
-                          label: Text('支出'),
-                        ),
-                        ButtonSegment(value: _Filter.income, label: Text('収入')),
-                      ],
-                      selected: {_filter},
-                      onSelectionChanged: (s) =>
-                          setState(() => _filter = s.first),
+            : CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(child: _buildSummary(summary)),
+                  if (_showWorkPanel)
+                    SliverToBoxAdapter(child: _buildWorkPanel()),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: SegmentedButton<_Filter>(
+                        segments: const [
+                          ButtonSegment(value: _Filter.all, label: Text('すべて')),
+                          ButtonSegment(
+                            value: _Filter.expense,
+                            label: Text('支出'),
+                          ),
+                          ButtonSegment(
+                            value: _Filter.income,
+                            label: Text('収入'),
+                          ),
+                        ],
+                        selected: {_filter},
+                        onSelectionChanged: (s) =>
+                            setState(() => _filter = s.first),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: visible.isEmpty
-                        ? const Center(
-                            child: Text(
-                              '登録がありません。\n下のボタンから支出・収入を登録してください。',
-                              textAlign: TextAlign.center,
-                            ),
-                          )
-                        : ListView.separated(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
-                            itemCount: visible.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 8),
-                            itemBuilder: (context, i) => _buildTile(visible[i]),
-                          ),
-                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                  if (visible.isEmpty)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Text(
+                          '登録がありません。\n下のボタンから支出・収入を登録してください。',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
+                      sliver: SliverList.separated(
+                        itemCount: visible.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, i) => _buildTile(visible[i]),
+                      ),
+                    ),
                 ],
               ),
       ),
@@ -309,6 +317,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ],
             ),
+    );
+  }
+
+  /// 入力とExcelビューワーを並べた作業パネル（入力すると下のシートにすぐ反映）
+  Widget _buildWorkPanel() {
+    final scheme = Theme.of(context).colorScheme;
+    final events = EventReport.namesOf(_entries);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      constraints: const BoxConstraints(maxHeight: 620),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '入力 → すぐ下のExcelに反映',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            QuickEntryPanel(knownEvents: events, onSaved: _reload),
+            const Divider(height: 24),
+            ExcelViewerScreen(embedded: true, refreshKey: _refreshTick),
+          ],
+        ),
+      ),
     );
   }
 
@@ -356,9 +397,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
-              onPressed: _openExcelViewer,
-              icon: const Icon(Icons.table_chart, size: 18),
-              label: const Text('Excelでどのセルに入るか見る'),
+              onPressed: () => setState(() => _showWorkPanel = !_showWorkPanel),
+              icon: Icon(
+                _showWorkPanel ? Icons.expand_less : Icons.table_chart,
+                size: 18,
+              ),
+              label: Text(
+                _showWorkPanel ? '入力とExcelビューワーを閉じる' : '入力しながらExcelで確認',
+              ),
             ),
           ),
           InkWell(

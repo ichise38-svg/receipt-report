@@ -15,7 +15,12 @@ import '../services/receipt_store.dart';
 /// 左側は Excel 風のグリッド（A〜G列・行番号）。明細をタップすると、
 /// その明細が書き込まれるセルを強調表示し、下部に「どの列に何が入るか」を説明します。
 class ExcelViewerScreen extends StatefulWidget {
-  const ExcelViewerScreen({super.key});
+  /// true のときは画面の一部（ホームの入力パネルの下）として表示する。
+  /// 外部でデータが変わったら [refreshKey] を変えると再計算する。
+  final bool embedded;
+  final Object? refreshKey;
+
+  const ExcelViewerScreen({super.key, this.embedded = false, this.refreshKey});
 
   @override
   State<ExcelViewerScreen> createState() => _ExcelViewerScreenState();
@@ -49,6 +54,12 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant ExcelViewerScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshKey != widget.refreshKey) _load();
   }
 
   @override
@@ -146,6 +157,18 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildHeaderInfo(),
+                SizedBox(height: 260, child: _buildGrid()),
+                _buildExplain(),
+              ],
+            );
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Text('Excelビューワー'),
