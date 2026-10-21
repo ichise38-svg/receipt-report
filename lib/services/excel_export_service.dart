@@ -5,13 +5,19 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/receipt.dart';
-import 'ledger_summary.dart';
+import 'annual_report.dart';
 
-/// 収支報告書を Excel(.xlsx) で書き出す
-/// シート構成: 「サマリー」（カテゴリ別集計・収支残高）/「明細」（全件一覧）
-/// 合計は数式で計算するため、Excel 側で明細を修正しても再計算される。
+/// 年間収支報告書を Excel(.xlsx) で書き出す
+///
+/// シート構成:
+/// - 「収支報告書」: 月日・摘要・収入・支出・収支・残高・備考（添付サンプルと同じ並び）
+/// - 「参加者名簿」: 名簿がある場合のみ
+/// 小計・合計・残高・1人あたりは数式で計算するため、Excel 側で修正しても再計算されます。
 class ExcelExportService {
   static final _dateFmt = DateFormat('yyyy/MM/dd');
+
+  static const _headerRow = 4; // 0始まり: 見出し行
+  static const _headers = ['月日', '摘要', '収入', '支出', '収支', '残高', '備考'];
 
   /// 収支報告書のExcelバイト列を生成（共有は行わない）
   static List<int> buildWorkbook({
@@ -21,13 +27,17 @@ class ExcelExportService {
     required DateTime to,
     required int participants,
     List<String> participantNames = const [],
+    int carryCash = 0,
+    int carryBank = 0,
   }) {
-    final sorted = [...entries]..sort((a, b) => a.date.compareTo(b.date));
+    final report = AnnualReport.build(
+      entries,
+      carryCash: carryCash,
+      carryBank: carryBank,
+    );
     final excel = Excel.createExcel();
-    final summarySheet = excel['サマリー'];
-    final detailSheet = excel['明細'];
+    final sheet = excel['収支報告書'];
     excel.delete('Sheet1');
-    final summaryData = LedgerSummary.from(entries, participants: participants);
 
     final bold = CellStyle(bold: true);
     final header = CellStyle(
@@ -46,176 +56,136 @@ class ExcelExportService {
     );
     final titleStyle = CellStyle(bold: true, fontSize: 16);
 
-    // ---------- 明細シート ----------
-    final detailHeaders = ['日付', '区分', '取引先・店舗', 'カテゴリ', '金額（円）', 'メモ'];
-    detailSheet.appendRow(detailHeaders.map(TextCellValue.new).toList());
-    for (var c = 0; c < detailHeaders.length; c++) {
-      detailSheet
-              .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0))
-              .cellStyle =
-          header;
-    }
-    for (final e in sorted) {
-      detailSheet.appendRow([
-        TextCellValue(_dateFmt.format(e.date)),
-        TextCellValue(e.kind.label),
-        TextCellValue(e.storeName),
-        TextCellValue(e.category),
-        IntCellValue(e.amount),
-        TextCellValue(e.memo),
-      ]);
-    }
-    final lastDetailRow = sorted.length; // 0始まりのヘッダ行を除いた末尾行(1始まり)
-    for (var r = 1; r <= lastDetailRow; r++) {
-      detailSheet
-              .cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: r))
-              .cellStyle =
-          money;
-    }
-    detailSheet.setColumnWidth(0, 12);
-    detailSheet.setColumnWidth(1, 8);
-    detailSheet.setColumnWidth(2, 24);
-    detailSheet.setColumnWidth(3, 12);
-    detailSheet.setColumnWidth(4, 14);
-    detailSheet.setColumnWidth(5, 30);
-
-    // 明細の金額範囲（数式用）
-    final amountRange = sorted.isEmpty ? null : 'E2:E${lastDetailRow + 1}';
-    final kindRange = sorted.isEmpty ? null : 'B2:B${lastDetailRow + 1}';
-    final catRange = sorted.isEmpty ? null : 'D2:D${lastDetailRow + 1}';
-
-    // ---------- サマリーシート ----------
     void put(int col, int row, CellValue value, {CellStyle? style}) {
-      summarySheet
-              .cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row))
-              .value =
-          value;
-      if (style != null) {
-        summarySheet
-                .cell(
-                  CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row),
-                )
-                .cellStyle =
-            style;
-      }
-    }
-
-    void putFormula(int col, int row, String formula, {CellStyle? style}) {
-      summarySheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row))
-          .value = FormulaCellValue(
-        formula,
+      final cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row),
       );
-      if (style != null) {
-        summarySheet
-                .cell(
-                  CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row),
-                )
-                .cellStyle =
-            style;
-      }
+      cell.value = value;
+      if (style != null) cell.cellStyle = style;
     }
 
-    put(0, 0, TextCellValue('会計報告書（収支）'), style: titleStyle);
-    put(0, 1, TextCellValue(title));
+    void formula(int col, int row, String f, {CellStyle? style}) {
+      final cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row),
+      );
+      cell.value = FormulaCellValue(f);
+      if (style != null) cell.cellStyle = style;
+    }
+
+    // 0始まりの行・列を「C7」のような表記に変換
+    String ref(int col, int row) => '${'ABCDEFG'[col]}${row + 1}';
+
+    // ---------- 見出し ----------
+    put(0, 0, TextCellValue(title), style: titleStyle);
     put(
       0,
-      2,
-      TextCellValue('対象期間: ${_dateFmt.format(from)} 〜 ${_dateFmt.format(to)}'),
+      1,
+      TextCellValue(
+        '対象期間: ${_dateFmt.format(from)} 〜 ${_dateFmt.format(to)}',
+      ),
     );
-    put(0, 3, TextCellValue('作成日: ${_dateFmt.format(DateTime.now())}'));
+    put(0, 2, TextCellValue('作成日: ${_dateFmt.format(DateTime.now())}'));
 
-    // 収支サマリー
-    int row = 5;
-    put(0, row, TextCellValue('項目'), style: header);
-    put(1, row, TextCellValue('金額（円）'), style: header);
-    row++;
-    final incomeRow = row + 1;
-    put(0, row, TextCellValue('収入合計'));
-    putFormula(
-      1,
-      row,
-      amountRange == null ? '0' : 'SUMIFS($amountRange,$kindRange,"収入")',
-      style: money,
-    );
-    row++;
-    final expenseRow = row + 1;
-    put(0, row, TextCellValue('支出合計'));
-    putFormula(
-      1,
-      row,
-      amountRange == null ? '0' : 'SUMIFS($amountRange,$kindRange,"支出")',
-      style: money,
-    );
-    row++;
-    put(0, row, TextCellValue('差引残高（収入－支出）'), style: bold);
-    putFormula(1, row, 'B$incomeRow-B$expenseRow', style: moneyBold);
-    row += 1;
-    final participantRow = row + 1;
-    put(0, row, TextCellValue('参加人数'));
-    put(1, row, IntCellValue(participants), style: money);
-    row++;
-    if (summaryData.expensePerPerson != null) {
-      put(0, row, TextCellValue('1人あたり支出'));
-      putFormula(
-        1,
+    for (var c = 0; c < _headers.length; c++) {
+      put(c, _headerRow, TextCellValue(_headers[c]), style: header);
+    }
+
+    // ---------- 繰越金・明細 ----------
+    final firstRow = _headerRow + 1;
+    final dataFirst = firstRow + report.carryRows.length;
+    var row = firstRow;
+    for (final r in report.rows) {
+      if (r.date != null) {
+        put(0, row, TextCellValue(_dateFmt.format(r.date!)));
+      }
+      put(1, row, TextCellValue(r.summary));
+      if (r.isCarry || r.income > 0) {
+        put(2, row, IntCellValue(r.income), style: money);
+      }
+      if (r.expense > 0) {
+        put(3, row, IntCellValue(r.expense), style: money);
+      }
+      formula(4, row, '${ref(2, row)}-${ref(3, row)}', style: money);
+      formula(
+        5,
         row,
-        'ROUNDDOWN(B$expenseRow/B$participantRow,0)',
+        row == firstRow
+            ? ref(4, row)
+            : '${ref(5, row - 1)}+${ref(4, row)}',
         style: money,
       );
-      row++;
-      put(0, row, TextCellValue('1人あたり収入'));
-      putFormula(
-        1,
-        row,
-        'ROUNDDOWN(B$incomeRow/B$participantRow,0)',
-        style: money,
-      );
+      if (r.note.isNotEmpty) put(6, row, TextCellValue(r.note));
       row++;
     }
-    row += 1;
 
-    // 支出カテゴリ別
-    row = _writeCategoryTable(
-      summarySheet: summarySheet,
-      put: put,
-      putFormula: putFormula,
-      startRow: row,
-      title: '支出（カテゴリ別）',
-      categories: receiptCategories,
-      kindLabel: '支出',
-      catRange: catRange,
-      kindRange: kindRange,
-      amountRange: amountRange,
-      header: header,
-      money: money,
-      moneyBold: moneyBold,
-      hasData: sorted.isNotEmpty,
+    // ---------- 小計 ----------
+    final subRow = row;
+    put(1, subRow, TextCellValue('小計'), style: bold);
+    if (report.dataRows.isEmpty) {
+      put(2, subRow, IntCellValue(0), style: money);
+      put(3, subRow, IntCellValue(0), style: money);
+    } else {
+      final last = subRow; // 小計直前の行 = 明細の最終行（1始まりの表記はref側で補正）
+      formula(
+        2,
+        subRow,
+        'SUM(${ref(2, dataFirst)}:${ref(2, last - 1)})',
+        style: moneyBold,
+      );
+      formula(
+        3,
+        subRow,
+        'SUM(${ref(3, dataFirst)}:${ref(3, last - 1)})',
+        style: moneyBold,
+      );
+    }
+    formula(4, subRow, '${ref(2, subRow)}-${ref(3, subRow)}', style: moneyBold);
+
+    // ---------- 合計 ----------
+    final totalRow = subRow + 1;
+    put(1, totalRow, TextCellValue('合計（前年繰越金＋小計）'), style: bold);
+    formula(
+      2,
+      totalRow,
+      '${ref(2, firstRow)}+${ref(2, firstRow + 1)}+${ref(2, subRow)}',
+      style: moneyBold,
     );
-    row += 1;
-
-    // 収入カテゴリ別
-    row = _writeCategoryTable(
-      summarySheet: summarySheet,
-      put: put,
-      putFormula: putFormula,
-      startRow: row,
-      title: '収入（カテゴリ別）',
-      categories: incomeCategories,
-      kindLabel: '収入',
-      catRange: catRange,
-      kindRange: kindRange,
-      amountRange: amountRange,
-      header: header,
-      money: money,
-      moneyBold: moneyBold,
-      hasData: sorted.isNotEmpty,
+    formula(3, totalRow, ref(3, subRow), style: moneyBold);
+    formula(
+      4,
+      totalRow,
+      '${ref(2, totalRow)}-${ref(3, totalRow)}',
+      style: moneyBold,
     );
+    formula(5, totalRow, ref(5, subRow - 1), style: moneyBold);
 
-    summarySheet.setColumnWidth(0, 26);
-    summarySheet.setColumnWidth(1, 16);
+    // ---------- 参加人数・1人あたり ----------
+    final partRow = totalRow + 2;
+    put(1, partRow, TextCellValue('参加人数（名）'));
+    put(2, partRow, IntCellValue(participants), style: money);
+    if (participants > 0) {
+      put(1, partRow + 1, TextCellValue('1人あたり支出（円）'));
+      formula(
+        2,
+        partRow + 1,
+        'ROUNDDOWN(${ref(3, totalRow)}/${ref(2, partRow)},0)',
+        style: money,
+      );
+    }
 
-    // ---------- 名簿シート（名簿がある場合のみ） ----------
+    // ---------- 報告者・監査 ----------
+    final signRow = partRow + 3;
+    put(5, signRow, TextCellValue('報告者'));
+    put(5, signRow + 2, TextCellValue('監査'));
+
+    sheet.setColumnWidth(0, 12);
+    sheet.setColumnWidth(1, 26);
+    for (var c = 2; c <= 5; c++) {
+      sheet.setColumnWidth(c, 14);
+    }
+    sheet.setColumnWidth(6, 30);
+
+    // ---------- 参加者名簿（名簿がある場合のみ） ----------
     if (participantNames.isNotEmpty) {
       final rosterSheet = excel['参加者名簿'];
       rosterSheet.appendRow(['No.', '氏名'].map(TextCellValue.new).toList());
@@ -249,6 +219,8 @@ class ExcelExportService {
     required DateTime to,
     required int participants,
     List<String> participantNames = const [],
+    int carryCash = 0,
+    int carryBank = 0,
   }) async {
     final bytes = buildWorkbook(
       title: title,
@@ -257,6 +229,8 @@ class ExcelExportService {
       to: to,
       participants: participants,
       participantNames: participantNames,
+      carryCash: carryCash,
+      carryBank: carryBank,
     );
     final safeTitle = title.replaceAll(RegExp(r'[\\/:*?"<>|\s]'), '_');
     await SharePlus.instance.share(
@@ -272,46 +246,5 @@ class ExcelExportService {
         subject: '収支報告書 $title',
       ),
     );
-  }
-
-  static int _writeCategoryTable({
-    required Sheet summarySheet,
-    required void Function(int, int, CellValue, {CellStyle? style}) put,
-    required void Function(int, int, String, {CellStyle? style}) putFormula,
-    required int startRow,
-    required String title,
-    required List<String> categories,
-    required String kindLabel,
-    required String? catRange,
-    required String? kindRange,
-    required String? amountRange,
-    required CellStyle header,
-    required CellStyle money,
-    required CellStyle moneyBold,
-    required bool hasData,
-  }) {
-    var row = startRow;
-    put(0, row, TextCellValue(title), style: header);
-    put(1, row, TextCellValue('金額（円）'), style: header);
-    row++;
-    final firstRow = row + 1;
-    for (final cat in categories) {
-      put(0, row, TextCellValue(cat));
-      if (hasData && amountRange != null) {
-        putFormula(
-          1,
-          row,
-          'SUMIFS($amountRange,$kindRange,"$kindLabel",$catRange,"$cat")',
-          style: money,
-        );
-      } else {
-        put(1, row, const IntCellValue(0), style: money);
-      }
-      row++;
-    }
-    final lastRow = row - 1;
-    put(0, row, TextCellValue('合計'), style: header);
-    putFormula(1, row, 'SUM(B$firstRow:B$lastRow)', style: moneyBold);
-    return row + 1;
   }
 }

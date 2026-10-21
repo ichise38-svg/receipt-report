@@ -22,6 +22,8 @@ class _ReportScreenState extends State<ReportScreen> {
   late DateTime _from;
   late DateTime _to;
   final _titleCtrl = TextEditingController(text: '経費精算');
+  final _carryCashCtrl = TextEditingController(text: '146353');
+  final _carryBankCtrl = TextEditingController(text: '308650');
   final _currency = NumberFormat('#,##0', 'ja_JP');
   final _dateFmt = DateFormat('yyyy/MM/dd');
   final Set<String> _excludedIds = {};
@@ -44,6 +46,8 @@ class _ReportScreenState extends State<ReportScreen> {
   @override
   void dispose() {
     _titleCtrl.dispose();
+    _carryCashCtrl.dispose();
+    _carryBankCtrl.dispose();
     super.dispose();
   }
 
@@ -79,6 +83,9 @@ class _ReportScreenState extends State<ReportScreen> {
 
   int get _participantCount => _members.length;
 
+  int _parseYen(TextEditingController c) =>
+      int.tryParse(c.text.replaceAll(RegExp(r'[,，\s円]'), '')) ?? 0;
+
   List<String> get _rosterNames =>
       _includeRoster ? _members.map((m) => m.name).toList() : const [];
 
@@ -103,6 +110,8 @@ class _ReportScreenState extends State<ReportScreen> {
           to: _to,
           participants: _participantCount,
           participantNames: _rosterNames,
+          carryCash: _parseYen(_carryCashCtrl),
+          carryBank: _parseYen(_carryBankCtrl),
         );
       } else {
         await ExportService.shareReport(
@@ -112,6 +121,8 @@ class _ReportScreenState extends State<ReportScreen> {
           to: _to,
           participants: _participantCount,
           participantNames: _rosterNames,
+          carryCash: _parseYen(_carryCashCtrl),
+          carryBank: _parseYen(_carryBankCtrl),
         );
       }
     } catch (e) {
@@ -147,6 +158,36 @@ class _ReportScreenState extends State<ReportScreen> {
                       border: OutlineInputBorder(),
                     ),
                     onChanged: (_) => setState(() {}),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _carryCashCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: '前年度繰越金（現金）',
+                            suffixText: '円',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _carryBankCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: '前年度繰越金（口座等）',
+                            suffixText: '円',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   Row(

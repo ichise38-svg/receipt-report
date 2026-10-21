@@ -28,22 +28,20 @@ void main() {
       participantNames: ['山田', '佐藤', '鈴木', '田中'],
     );
     final book = Excel.decodeBytes(bytes);
-    expect(book.tables.keys, containsAll(['サマリー', '明細']));
+    expect(book.tables.keys, contains('収支報告書'));
     expect(book.tables.keys, isNot(contains('Sheet1')));
 
-    final detail = book.tables['明細']!;
-    expect(detail.maxRows, 3); // ヘッダ + 2件
-    expect(detail.rows[1][1]?.value.toString(), '支出');
-    expect(detail.rows[2][1]?.value.toString(), '収入');
-
-    final summary = book.tables['サマリー']!;
-    final formulas = summary.rows
+    final sheet = book.tables['収支報告書']!;
+    // 見出し行（5行目）
+    expect(sheet.rows[4][0]?.value.toString(), '月日');
+    // 繰越2行 + 明細2件 の後に小計・合計が続く
+    final formulas = sheet.rows
         .expand((r) => r)
         .whereType<Data>()
         .where((c) => c.value is FormulaCellValue)
         .map((c) => (c.value as FormulaCellValue).formula)
         .toList();
-    expect(formulas.any((f) => f.contains('SUMIFS')), isTrue);
-    expect(formulas.any((f) => f.contains('B7-B6') || f.contains('-')), isTrue);
+    expect(formulas.any((f) => f.startsWith('SUM(')), isTrue);
+    expect(formulas.any((f) => f.startsWith('ROUNDDOWN(')), isTrue);
   });
 }

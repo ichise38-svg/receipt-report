@@ -8,7 +8,7 @@ import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/receipt.dart';
-import 'ledger_summary.dart';
+import 'annual_report.dart';
 
 final _currency = NumberFormat('#,##0', 'ja_JP');
 final _dateFmt = DateFormat('yyyy/MM/dd');
@@ -87,7 +87,7 @@ class ExportService {
     );
   }
 
-  /// 会計報告書（収支サマリー・カテゴリ別集計・明細・レシート画像）をPDFで共有
+  /// 年間収支報告書（添付サンプルと同じ並び）をPDFで共有
   static Future<void> shareReport({
     required String title,
     required List<Receipt> receipts,
@@ -95,88 +95,113 @@ class ExportService {
     required DateTime to,
     required int participants,
     List<String> participantNames = const [],
+    int carryCash = 0,
+    int carryBank = 0,
   }) async {
     final font = await _loadJapaneseFont();
     final theme = pw.ThemeData.withFont(base: font, bold: font);
-    final summary = LedgerSummary.from(receipts, participants: participants);
-    final sorted = [...receipts]..sort((a, b) => a.date.compareTo(b.date));
+    final report = AnnualReport.build(
+      receipts,
+      carryCash: carryCash,
+      carryBank: carryBank,
+    );
+    final balances = report.runningBalances;
+    final rows = report.rows;
+
+    String money(int v) => v == 0 ? '' : _currency.format(v);
 
     final doc = pw.Document();
 
-    // 1ページ目以降：報告書本体（明細が多い場合は自動で改ページ）
+    // 1ページ目以降：年間収支報告書本体（明細が多い場合は自動で改ページ）
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         theme: theme,
-        margin: const pw.EdgeInsets.all(32),
+        margin: const pw.EdgeInsets.all(28),
         build: (ctx) => [
-          pw.Text('会計報告書（収支）', style: const pw.TextStyle(fontSize: 20)),
-          pw.SizedBox(height: 4),
-          pw.Text(title, style: const pw.TextStyle(fontSize: 12)),
+          pw.Text(title, style: const pw.TextStyle(fontSize: 16)),
           pw.SizedBox(height: 2),
           pw.Text(
             '対象期間: ${_dateFmt.format(from)} 〜 ${_dateFmt.format(to)}',
-            style: const pw.TextStyle(fontSize: 10),
+            style: const pw.TextStyle(fontSize: 9),
           ),
           pw.Text(
             '作成日: ${_dateFmt.format(DateTime.now())}',
-            style: const pw.TextStyle(fontSize: 10),
+            style: const pw.TextStyle(fontSize: 9),
           ),
-          pw.SizedBox(height: 14),
-          pw.Text('収支サマリー', style: const pw.TextStyle(fontSize: 14)),
-          pw.SizedBox(height: 6),
+          pw.SizedBox(height: 10),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+            columnWidths: const {
+              0: pw.FixedColumnWidth(58),
+              1: pw.FlexColumnWidth(3),
+              2: pw.FixedColumnWidth(62),
+              3: pw.FixedColumnWidth(62),
+              4: pw.FixedColumnWidth(62),
+              5: pw.FixedColumnWidth(68),
+              6: pw.FlexColumnWidth(2),
+            },
+            children: [
+              _tableRow(
+                const ['月日', '摘要', '収入', '支出', '収支', '残高', '備考'],
+                header: true,
+              ),
+              for (var i = 0; i < rows.length; i++)
+                _tableRow([
+                  rows[i].date == null ? '' : _dateFmt.format(rows[i].date!),
+                  rows[i].summary,
+                  money(rows[i].income),
+                  money(rows[i].expense),
+                  _currency.format(rows[i].income - rows[i].expense),
+                  _currency.format(balances[i]),
+                  rows[i].note,
+                ]),
+              _tableRow([
+                '',
+                '小計（明細のみ）',
+                _currency.format(report.subtotalIncome),
+                _currency.format(report.subtotalExpense),
+                _currency.format(
+                  report.subtotalIncome - report.subtotalExpense,
+                ),
+                '',
+                '',
+              ], bold: true),
+              _tableRow([
+                '',
+                '合計（前年繰越金＋小計）',
+                _currency.format(report.totalIncome),
+                _currency.format(report.totalExpense),
+                _currency.format(report.balance),
+                _currency.format(report.balance),
+                '',
+              ], bold: true),
+            ],
+          ),
+          pw.SizedBox(height: 12),
+          pw.Text('次年度へ繰り越す額', style: const pw.TextStyle(fontSize: 11)),
+          pw.SizedBox(height: 4),
           _table(
             headers: ['項目', '金額（円）'],
             rows: [
-              ['収入合計', _currency.format(summary.income)],
-              ['支出合計', _currency.format(summary.expense)],
-              ['差引残高（収入－支出）', _currency.format(summary.balance)],
-              ['参加人数', '${summary.participants}名'],
-              if (summary.expensePerPerson != null)
-                ['1人あたり支出', _currency.format(summary.expensePerPerson)],
-              if (summary.incomePerPerson != null)
-                ['1人あたり収入', _currency.format(summary.incomePerPerson)],
+              ['参加人数', '$participants名'],
+              ['差引残高（次年度繰越）', _currency.format(report.balance)],
+              if (participants > 0)
+                [
+                  '1人あたり支出',
+                  _currency.format(report.totalExpense ~/ participants),
+                ],
             ],
             rightAlignCols: const {1},
           ),
-          pw.SizedBox(height: 14),
-          pw.Text('支出（カテゴリ別）', style: const pw.TextStyle(fontSize: 12)),
-          pw.SizedBox(height: 4),
-          _categoryTable(
-            receiptCategories,
-            summary.expenseByCategory,
-            summary.expense,
-          ),
-          pw.SizedBox(height: 12),
-          pw.Text('収入（カテゴリ別）', style: const pw.TextStyle(fontSize: 12)),
-          pw.SizedBox(height: 4),
-          _categoryTable(
-            incomeCategories,
-            summary.incomeByCategory,
-            summary.income,
-          ),
-          pw.SizedBox(height: 14),
-          pw.Text(
-            '明細（${sorted.length}件）',
-            style: const pw.TextStyle(fontSize: 14),
-          ),
-          pw.SizedBox(height: 6),
-          _table(
-            headers: ['日付', '区分', '店舗・摘要', 'カテゴリ', '金額（円）', 'メモ'],
-            rows: sorted
-                .map(
-                  (r) => [
-                    _dateFmt.format(r.date),
-                    r.kind.label,
-                    r.storeName,
-                    r.category,
-                    _currency.format(r.amount),
-                    r.memo,
-                  ],
-                )
-                .toList(),
-            rightAlignCols: const {4},
-            fontSize: 9,
+          pw.SizedBox(height: 24),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.end,
+            children: [
+              pw.Text('報告者　　　　　　　　', style: const pw.TextStyle(fontSize: 10)),
+              pw.SizedBox(width: 40),
+              pw.Text('監査　　　　　　　　', style: const pw.TextStyle(fontSize: 10)),
+            ],
           ),
         ],
       ),
@@ -206,7 +231,8 @@ class ExportService {
       );
     }
 
-    // 画像のあるレシートは1件1ページで添付
+    // 画像のあるレシートは1件1ページで添付（日付順）
+    final sorted = [...receipts]..sort((a, b) => a.date.compareTo(b.date));
     for (final r in sorted) {
       final bytes = await _readBytes(r.imagePath);
       if (bytes == null) continue;
@@ -260,20 +286,32 @@ class ExportService {
     return 'receipt_${_dateFmt.format(r.date).replaceAll('/', '')}_$shortId.$ext';
   }
 
-  static pw.Widget _categoryTable(
-    List<String> categories,
-    Map<String, int> byCategory,
-    int total,
-  ) {
-    final rows = categories
-        .where((c) => (byCategory[c] ?? 0) != 0)
-        .map((c) => [c, _currency.format(byCategory[c] ?? 0)])
-        .toList();
-    rows.add(['合計', _currency.format(total)]);
-    return _table(
-      headers: ['カテゴリ', '金額（円）'],
-      rows: rows,
-      rightAlignCols: const {1},
+  static pw.TableRow _tableRow(
+    List<String> cells, {
+    bool header = false,
+    bool bold = false,
+  }) {
+    final style = pw.TextStyle(
+      fontSize: 8,
+      fontWeight: (header || bold) ? pw.FontWeight.bold : pw.FontWeight.normal,
+    );
+    return pw.TableRow(
+      decoration: header
+          ? const pw.BoxDecoration(color: PdfColors.blue50)
+          : null,
+      children: [
+        for (var i = 0; i < cells.length; i++)
+          pw.Padding(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 3),
+            child: pw.Text(
+              cells[i],
+              style: style,
+              textAlign: (i >= 2 && i <= 5 && !header)
+                  ? pw.TextAlign.right
+                  : pw.TextAlign.left,
+            ),
+          ),
+      ],
     );
   }
 
