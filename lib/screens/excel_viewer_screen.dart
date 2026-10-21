@@ -3,6 +3,8 @@ import 'package:intl/intl.dart' hide TextDirection;
 
 import '../models/receipt.dart';
 import '../services/app_settings.dart';
+import '../services/event_excel_service.dart';
+import '../services/event_report.dart';
 import '../services/excel_export_service.dart';
 import '../services/excel_layout.dart';
 import '../services/member_store.dart';
@@ -19,8 +21,13 @@ class ExcelViewerScreen extends StatefulWidget {
   State<ExcelViewerScreen> createState() => _ExcelViewerScreenState();
 }
 
+enum _ViewMode { annual, event }
+
 class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
   List<Receipt> _entries = [];
+  _ViewMode _mode = _ViewMode.annual;
+  String? _eventName;
+  List<String> _eventNames = [];
   static const _colWidths = [84.0, 170.0, 96.0, 96.0, 96.0, 96.0, 180.0];
   static const _rowHeight = 36.0;
   static const _rowHeaderWidth = 44.0;
@@ -58,25 +65,48 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
     final members = await MemberStore.loadAll();
     final title = await AppSettings.getMainTitle();
     if (!mounted) return;
+    final names = EventReport.namesOf(entries);
     setState(() {
       _mainTitle = title;
       _participants = members.length;
       _loading = false;
       _entries = entries;
+      _eventNames = names;
+      _eventName = (_eventName != null && names.contains(_eventName))
+          ? _eventName
+          : (names.isEmpty ? null : names.first);
     });
     _rebuild(entries);
   }
 
   void _rebuild(List<Receipt> entries) {
     _entries = entries;
+    final live = entries.where((r) => !r.deleted).toList();
     setState(() {
-      _rows = AnnualLayout.build(
-        entries: entries.where((r) => !r.deleted).toList(),
-        carryCash: _parseYen(_carryCashCtrl),
-        carryBank: _parseYen(_carryBankCtrl),
-        participants: _participants,
-      );
+      _selectedRow = null;
+      _selectedCol = null;
+      _rows = _mode == _ViewMode.annual
+          ? AnnualLayout.build(
+              entries: live,
+              carryCash: _parseYen(_carryCashCtrl),
+              carryBank: _parseYen(_carryBankCtrl),
+              participants: _participants,
+            )
+          : (_eventName == null
+                ? <LayoutRow>[]
+                : EventLayout.build(
+                    entries: live,
+                    eventName: _eventName!,
+                    participants: _participants,
+                    mainTitle: _mainTitle,
+                  ));
     });
+  }
+
+  void _setMode(_ViewMode m) {
+    if (_mode == m) return;
+    _mode = m;
+    _rebuild(_entries);
   }
 
   int _parseYen(TextEditingController c) =>
@@ -141,6 +171,13 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
 
   Widget _buildHeaderInfo() {
     final scheme = Theme.of(context).colorScheme;
+    final annual = _mode == _ViewMode.annual;
+    final fileName = annual
+        ? ExcelExportService.fileNameFor('全体')
+        : (_eventName == null
+              ? '（イベント未選択）'
+              : EventExcelService.fileNameFor(_eventName!));
+    final sheetName = annual ? '収支報告書' : '会計報告書';
     return Container(
       width: double.infinity,
       color: scheme.surfaceContainerHighest,
@@ -148,43 +185,78 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'ファイル: ${ExcelExportService.fileNameFor('全体')} ／ シート: 収支報告書',
-            style: const TextStyle(fontSize: 12),
+          SegmentedButton<_ViewMode>(
+            segments: const [
+              ButtonSegment(value: _ViewMode.annual, label: Text('年間収支報告書')),
+              ButtonSegment(value: _ViewMode.event, label: Text('イベント別報告')),
+            ],
+            selected: {_mode},
+            onSelectionChanged: (s) => _setMode(s.first),
           ),
           const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _carryCashCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: '繰越金（現金）',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (_) => _rebuild(_entries),
+          if (!annual) ...[
+            if (_eventNames.isEmpty)
+              const Text('イベント名が登録された明細がありません。', style: TextStyle(fontSize: 12))
+            else
+              DropdownButtonFormField<String>(
+                initialValue: _eventName,
+                isDense: true,
+                decoration: const InputDecoration(
+                  labelText: 'イベント',
+                  isDense: true,
+                  border: OutlineInputBorder(),
                 ),
+                items: [
+                  for (final e in _eventNames)
+                    DropdownMenuItem(value: e, child: Text(e)),
+                ],
+                onChanged: (v) {
+                  _eventName = v;
+                  _rebuild(_entries);
+                },
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _carryBankCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: '繰越金（口座等）',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (_) => _rebuild(_entries),
-                ),
-              ),
-            ],
+            const SizedBox(height: 6),
+          ],
+          Text(
+            'ファイル: $fileName ／ シート: $sheetName',
+            style: const TextStyle(fontSize: 12),
           ),
+          if (annual) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _carryCashCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: '繰越金（現金）',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (_) => _rebuild(_entries),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _carryBankCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: '繰越金（口座等）',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (_) => _rebuild(_entries),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 4),
           Text(
-            '左上：$_mainTitle（$_participants名）',
+            '左上（A1）：$_mainTitle（$_participants名）'
+            '${annual ? '' : '\nA2：${_eventName ?? '-'}　会計報告書'}',
             style: const TextStyle(fontSize: 12),
           ),
         ],
@@ -217,7 +289,7 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
   }
 
   int _maxRow() {
-    var max = AnnualLayout.headerRow + 1;
+    var max = 0;
     for (final r in _rows) {
       if (r.row > max) max = r.row;
     }
@@ -235,8 +307,6 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
   }
 
   Widget _gridRow(int r) {
-    final isHeaderRow = r == AnnualLayout.headerRow;
-    final layout = _rows.where((x) => x.row == r).firstOrNull;
     final rowSelected = _selectedRow == r;
     return Row(
       children: [
@@ -247,41 +317,31 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
           header: true,
           highlight: rowSelected,
         ),
-        for (var c = 0; c < _colWidths.length; c++)
-          _cellWidget(r, c, isHeaderRow, layout),
+        for (var c = 0; c < _colWidths.length; c++) _cellWidget(r, c),
       ],
     );
   }
 
-  Widget _cellWidget(int r, int c, bool isHeaderRow, LayoutRow? layout) {
+  Widget _cellWidget(int r, int c) {
     final scheme = Theme.of(context).colorScheme;
-    String text = '';
-    bool isFormula = false;
-    bool isCell = false;
-    if (isHeaderRow) {
-      text = AnnualLayout.headers[c];
-      isCell = true;
-    } else {
-      final cell = _cellAt(r, c);
-      if (cell != null) {
-        text = _cellText(cell);
-        isFormula = cell.isFormula;
-        isCell = true;
-      }
-    }
+    final cell = _cellAt(r, c);
+    final isCell = cell != null;
+    final isHeader = cell?.header ?? false;
+    final text = cell == null ? '' : _cellText(cell);
+    final isFormula = cell?.isFormula ?? false;
     final selected = _selectedRow == r && _selectedCol == c;
     final rowSelected = _selectedRow == r;
     Color? bg;
-    if (isHeaderRow) {
+    if (isHeader) {
       bg = const Color(0xFFE3F2FD);
     } else if (selected) {
       bg = scheme.primary.withValues(alpha: 0.35);
     } else if (rowSelected) {
       bg = scheme.primary.withValues(alpha: 0.10);
     }
-    final isRight = c == 2 || c == 3 || c == 4 || c == 5;
+    final isRight = cell?.amount != null;
     return InkWell(
-      onTap: isHeaderRow || !isCell ? null : () => _select(r, c),
+      onTap: !isCell ? null : () => _select(r, c),
       child: Container(
         width: _colWidths[c],
         height: _rowHeight,
@@ -300,7 +360,7 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: 12,
-            fontWeight: isHeaderRow ? FontWeight.bold : FontWeight.normal,
+            fontWeight: isHeader ? FontWeight.bold : FontWeight.normal,
             color: isFormula ? Colors.teal.shade700 : null,
           ),
         ),
@@ -337,7 +397,8 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
     final row = _selected;
     final String body;
     if (row == null) {
-      body = '明細の行（月日・摘要・収入・支出の欄）をタップすると、'
+      body =
+          '明細の行（月日・摘要・収入・支出の欄）をタップすると、'
           'その明細がExcelのどのセルに入るかを表示します。';
     } else {
       final col = _selectedCol;
@@ -351,7 +412,7 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
       ];
       if (cell != null) {
         lines.add(
-          '選択セル ${cell.address}：${_columnRole(cell.col)}'
+          '選択セル ${cell.address}：${cell.role ?? _columnRole(cell.col)}'
           '${cell.amount != null ? '＝ ¥${_currency.format(cell.amount)}' : ''}',
         );
         if (cell.formula != null) {

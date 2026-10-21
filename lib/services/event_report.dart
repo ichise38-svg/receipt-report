@@ -67,6 +67,19 @@ class EventReport {
     );
   }
 
+  /// イベント名の一覧（新しい登録があるものを上に）
+  static List<String> namesOf(List<Receipt> all) {
+    final latest = <String, DateTime>{};
+    for (final r in all) {
+      if (r.deleted || r.event.trim().isEmpty) continue;
+      final name = r.event.trim();
+      final cur = latest[name];
+      if (cur == null || r.date.isAfter(cur)) latest[name] = r.date;
+    }
+    return latest.keys.toList()
+      ..sort((a, b) => latest[b]!.compareTo(latest[a]!));
+  }
+
   int get incomeTotal => incomeLines.fold(0, (s, l) => s + l.amount);
   int get expenseTotal => expenseLines.fold(0, (s, l) => s + l.amount);
 
