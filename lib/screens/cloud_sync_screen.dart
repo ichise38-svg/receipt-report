@@ -12,8 +12,6 @@ class CloudSyncScreen extends StatefulWidget {
 }
 
 class _CloudSyncScreenState extends State<CloudSyncScreen> {
-  final _endpointCtrl = TextEditingController();
-  final _tokenCtrl = TextEditingController();
   final _dateFmt = DateFormat('yyyy/MM/dd HH:mm');
 
   bool _loading = true;
@@ -26,16 +24,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
     _load();
   }
 
-  @override
-  void dispose() {
-    _endpointCtrl.dispose();
-    _tokenCtrl.dispose();
-    super.dispose();
-  }
-
   Future<void> _load() async {
-    _endpointCtrl.text = await CloudSyncService.getEndpoint();
-    _tokenCtrl.text = await CloudSyncService.getToken();
     _lastSynced = await CloudSyncService.lastSyncedAt();
     if (!mounted) return;
     setState(() => _loading = false);
@@ -46,16 +35,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  Future<void> _saveSettings() async {
-    await CloudSyncService.saveSettings(
-      endpoint: _endpointCtrl.text,
-      token: _tokenCtrl.text,
-    );
-    _toast('設定を保存しました。');
-  }
-
   Future<void> _ping() async {
-    await _saveSettings();
     setState(() => _busy = true);
     try {
       await CloudSyncService.ping();
@@ -70,7 +50,6 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
   }
 
   Future<void> _sync() async {
-    await _saveSettings();
     setState(() => _busy = true);
     try {
       final r = await CloudSyncService.sync();
@@ -99,44 +78,13 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   const Text(
-                    '会員全員が同じ接続先と合言葉を設定してください。',
+                    '接続先は自動で設定されています。全員が同じアプリを使えばそのまま同期できます。',
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: _endpointCtrl,
-                    keyboardType: TextInputType.url,
-                    decoration: const InputDecoration(
-                      labelText: '接続先URL（https://...）',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _tokenCtrl,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: '合言葉',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: _busy ? null : _saveSettings,
-                          child: const Text('設定を保存'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: _busy ? null : _ping,
-                          child: const Text('接続確認'),
-                        ),
-                      ),
-                    ],
+                  OutlinedButton(
+                    onPressed: _busy ? null : _ping,
+                    child: const Text('接続確認'),
                   ),
                   const Divider(height: 32),
                   Text(

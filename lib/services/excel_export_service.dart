@@ -1,9 +1,7 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
 import 'package:intl/intl.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/receipt.dart';
@@ -261,15 +259,12 @@ class ExcelExportService {
       participantNames: participantNames,
     );
     final safeTitle = title.replaceAll(RegExp(r'[\\/:*?"<>|\s]'), '_');
-    final dir = await getTemporaryDirectory();
-    final file = File(p.join(dir.path, '収支報告書_$safeTitle.xlsx'));
-    await file.writeAsBytes(bytes);
-
     await SharePlus.instance.share(
       ShareParams(
         files: [
-          XFile(
-            file.path,
+          XFile.fromData(
+            Uint8List.fromList(bytes),
+            name: '収支報告書_$safeTitle.xlsx',
             mimeType:
                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           ),

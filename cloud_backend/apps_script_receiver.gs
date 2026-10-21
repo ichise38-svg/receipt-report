@@ -5,11 +5,9 @@
  * 設定手順:
  * 1. Google スプレッドシートを新規作成（会員全員で同じものを使う）
  * 2. 拡張機能 > Apps Script を開き、このコードを貼り付け
- * 3. SECRET_TOKEN を合言葉に変更（アプリの「合言葉」に同じ値を全員が入力）
- *    ※ Apps Script はリクエストヘッダを読めないため、合言葉は送信データ内の token で照合します
- * 4. デプロイ > 新しいデプロイ > 種類「ウェブアプリ」
+ * 3. デプロイ > 新しいデプロイ > 種類「ウェブアプリ」
  *    - 実行ユーザー: 自分 / アクセスできるユーザー: 全員
- * 5. 発行されたURL（https://script.google.com/.../exec）をアプリの「送信先URL」に入力
+ * 4. 発行されたURL（https://script.google.com/.../exec）をアプリの fixedEndpoint に設定
  *
  * 保存先:
  * - 「明細」シート: レシート・収入（読みやすい列 ＋ 同期用のデータ列）
@@ -24,7 +22,6 @@
  * 注意: 旧バージョンの「明細」シートを使っていた場合は、シートを削除してから
  *       この版を使ってください（列構成が異なるため）。
  */
-const SECRET_TOKEN = 'CHANGE_ME_TO_YOUR_KEY';
 const DETAIL_SHEET = '明細';
 const MEMBER_SHEET = '参加者';
 const IMAGE_FOLDER = '収支レシート画像';
@@ -46,9 +43,6 @@ function doPost(e) {
   let locked = false;
   try {
     const data = JSON.parse(e.postData.contents);
-    if (!checkToken_(data.token)) {
-      return json_({ ok: false, error: 'unauthorized' });
-    }
     if (data.ping) {
       return json_({ ok: true, message: 'pong' });
     }
@@ -193,11 +187,6 @@ function sync_(data) {
     imageUrls: imageUrls,
     serverTime: now,
   };
-}
-
-function checkToken_(token) {
-  if (SECRET_TOKEN === 'CHANGE_ME_TO_YOUR_KEY') return false;
-  return token === SECRET_TOKEN;
 }
 
 function getSheet_(name, headers) {

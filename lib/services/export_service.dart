@@ -1,8 +1,7 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -18,11 +17,19 @@ final _dateFmt = DateFormat('yyyy/MM/dd');
 class ExportService {
   /// レシート画像をJPEGとして書き出して共有
   static Future<void> shareReceiptAsJpeg(Receipt receipt) async {
-    final tmp = await _tempFile(_receiptFileBase(receipt, 'jpg'));
-    await tmp.writeAsBytes(await File(receipt.imagePath).readAsBytes());
+    final bytes = await _readBytes(receipt.imagePath);
+    if (bytes == null) {
+      throw Exception('レシート画像が見つかりません');
+    }
     await SharePlus.instance.share(
       ShareParams(
-        files: [XFile(tmp.path, mimeType: 'image/jpeg')],
+        files: [
+          XFile.fromData(
+            bytes,
+            mimeType: 'image/jpeg',
+            name: _receiptFileBase(receipt, 'jpg'),
+          ),
+        ],
         text: '${receipt.storeName} ${_currency.format(receipt.amount)}円',
       ),
     );
@@ -32,11 +39,8 @@ class ExportService {
   static Future<void> shareReceiptAsPdf(Receipt receipt) async {
     final font = await _loadJapaneseFont();
     final doc = pw.Document();
-    final hasImage =
-        receipt.imagePath.isNotEmpty && File(receipt.imagePath).existsSync();
-    final pdfImage = hasImage
-        ? pw.MemoryImage(await File(receipt.imagePath).readAsBytes())
-        : null;
+    final imageBytes = await _readBytes(receipt.imagePath);
+    final pdfImage = imageBytes != null ? pw.MemoryImage(imageBytes) : null;
 
     doc.addPage(
       pw.Page(
@@ -69,10 +73,17 @@ class ExportService {
       ),
     );
 
-    final file = await _tempFile(_receiptFileBase(receipt, 'pdf'));
-    await file.writeAsBytes(await doc.save());
+    final pdfBytes = await doc.save();
     await SharePlus.instance.share(
-      ShareParams(files: [XFile(file.path, mimeType: 'application/pdf')]),
+      ShareParams(
+        files: [
+          XFile.fromData(
+            pdfBytes,
+            mimeType: 'application/pdf',
+            name: _receiptFileBase(receipt, 'pdf'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -197,10 +208,9 @@ class ExportService {
 
     // 画像のあるレシートは1件1ページで添付
     for (final r in sorted) {
-      if (r.imagePath.isEmpty) continue;
-      final file = File(r.imagePath);
-      if (!await file.exists()) continue;
-      final image = pw.MemoryImage(await file.readAsBytes());
+      final bytes = await _readBytes(r.imagePath);
+      if (bytes == null) continue;
+      final image = pw.MemoryImage(bytes);
       doc.addPage(
         pw.Page(
           pageFormat: PdfPageFormat.a4,
@@ -228,11 +238,16 @@ class ExportService {
     }
 
     final safeTitle = title.replaceAll(RegExp(r'[\\/:*?"<>|\s]'), '_');
-    final file = await _tempFile('収支報告書_$safeTitle.pdf');
-    await file.writeAsBytes(await doc.save());
+    final pdfBytes = await doc.save();
     await SharePlus.instance.share(
       ShareParams(
-        files: [XFile(file.path, mimeType: 'application/pdf')],
+        files: [
+          XFile.fromData(
+            pdfBytes,
+            mimeType: 'application/pdf',
+            name: '収支報告書_$safeTitle.pdf',
+          ),
+        ],
         subject: '収支報告書 $title',
       ),
     );
@@ -311,8 +326,13 @@ class ExportService {
     }
   }
 
-  static Future<File> _tempFile(String name) async {
-    final dir = await getTemporaryDirectory();
-    return File(p.join(dir.path, name));
+  /// 画像ファイルを読み込む（Web や読めない場合は null）
+  static Future<Uint8List?> _readBytes(String path) async {
+    if (path.isEmpty || kIsWeb) return null;
+    try {
+      return await File(path).readAsBytes();
+    } catch (_) {
+      return null;
+    }
   }
 }

@@ -20,8 +20,10 @@ import 'receipt_store.dart';
 /// - 競合: 更新日時が新しい方を優先（最後の更新優先）。削除も全員に反映します。
 /// 同期は手動のみです（通信量と処理回数を抑えるため）。
 class CloudSyncService {
-  static const _urlKey = 'cloud_endpoint_url';
-  static const _tokenKey = 'cloud_token';
+  /// 共有先（Apps Script のウェブアプリURL）。全員この値で自動接続します。
+  /// デプロイ後に https://script.google.com/macros/s/.../exec を設定してください。
+  static const String fixedEndpoint = 'https://script.google.com/macros/s/REPLACE_WITH_DEPLOY_ID/exec';
+
   static const _lastSyncKey = 'cloud_last_sync';
   static const _cursorKey = 'cloud_sync_cursor';
   static const _pushKey = 'cloud_last_push';
@@ -30,24 +32,7 @@ class CloudSyncService {
   static const int maxImageSide = 1200;
   static const int jpegQuality = 80;
 
-  static Future<String> getEndpoint() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_urlKey) ?? '';
-  }
-
-  static Future<String> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_tokenKey) ?? '';
-  }
-
-  static Future<void> saveSettings({
-    required String endpoint,
-    required String token,
-  }) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_urlKey, endpoint.trim());
-    await prefs.setString(_tokenKey, token.trim());
-  }
+  static Future<String> getEndpoint() async => fixedEndpoint;
 
   static Future<DateTime?> lastSyncedAt() async {
     final prefs = await SharedPreferences.getInstance();
@@ -57,12 +42,7 @@ class CloudSyncService {
 
   /// 同期を実行する（送信と受信をまとめて行う）
   static Future<SyncResult> sync() async {
-    final endpoint = await getEndpoint();
-    final token = await getToken();
-    if (endpoint.isEmpty) {
-      throw const CloudSyncException('送信先URLが未設定です。設定から登録してください。');
-    }
-    final uri = _validatedUri(endpoint);
+    final uri = _validatedUri(await getEndpoint());
     final prefs = await SharedPreferences.getInstance();
     final since = prefs.getInt(_cursorKey) ?? 0;
     // 前回送信以降に変わったものだけを送る（通信量の節約）
@@ -120,7 +100,6 @@ class CloudSyncService {
 
     final payload = {
       'schemaVersion': 2,
-      'token': token,
       'action': 'sync',
       'since': since,
       // 端末が保持している画像（ID→共有URL）。サーバーは差分の画像だけ返す
@@ -181,12 +160,9 @@ class CloudSyncService {
 
   /// 接続確認（データは送らず、合言葉と疎通のみ確認）
   static Future<void> ping() async {
-    final endpoint = await getEndpoint();
-    final token = await getToken();
-    final uri = _validatedUri(endpoint);
+    final uri = _validatedUri(await getEndpoint());
     await _post(uri, {
       'schemaVersion': 2,
-      'token': token,
       'ping': true,
     }, timeout: const Duration(seconds: 30));
   }
@@ -228,9 +204,6 @@ class CloudSyncService {
       );
     }
     if (data['ok'] != true) {
-      if (data['error'] == 'unauthorized') {
-        throw const CloudSyncException('合言葉（アクセスキー）が一致しません。');
-      }
       throw CloudSyncException('同期に失敗しました：${data['error'] ?? '不明なエラー'}');
     }
     return data;
