@@ -33,9 +33,20 @@ class AppSettings {
     return (prefs.getString(_endpointKey) ?? '').trim();
   }
 
-  static Future<void> setSyncEndpoint(String url) async {
+  /// 同期先を保存する。URLが変わった場合は同期の基準（受信カーソル・送信済み時刻）を
+  /// 消して、次回の同期で全データを新しい同期先へ送り直す。
+  /// 戻り値: 同期先が変わったかどうか
+  static Future<bool> setSyncEndpoint(String url) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_endpointKey, url.trim());
+    final next = url.trim();
+    final changed = (prefs.getString(_endpointKey) ?? '') != next;
+    await prefs.setString(_endpointKey, next);
+    if (changed) {
+      await prefs.remove('cloud_sync_cursor');
+      await prefs.remove('cloud_last_push');
+      await prefs.remove('cloud_last_sync');
+    }
+    return changed;
   }
 
   /// 同期先の候補一覧

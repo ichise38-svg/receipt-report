@@ -92,6 +92,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+    // 設定画面で同期先を保存すると同期が走るため、表示を読み直す
+    await _reload();
     _autoSync();
   }
 

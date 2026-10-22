@@ -172,6 +172,19 @@ class ReceiptStore {
     if (changed) await _saveRaw(all);
   }
 
+  /// 同期先を変えたとき、旧同期先の画像URLを消して新しい同期先へ画像を送り直す
+  static Future<void> clearImageUrls() async {
+    final all = await loadRaw();
+    var changed = false;
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].imageUrl.isNotEmpty) {
+        all[i] = all[i].copyWith(imageUrl: '');
+        changed = true;
+      }
+    }
+    if (changed) await _saveRaw(all);
+  }
+
   static Future<void> _deleteImageFile(String path) async {
     if (path.isEmpty) return;
     final file = File(path);

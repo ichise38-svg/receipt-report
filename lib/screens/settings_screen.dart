@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/app_settings.dart';
 import '../services/cloud_sync_service.dart';
+import '../services/receipt_store.dart';
 
 /// 設定：同期先URL（任意のクラウドのHTTPSエンドポイント）と報告書の主タイトル
 class SettingsScreen extends StatefulWidget {
@@ -128,9 +129,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _snack('同期先URLは https:// で始まる必要があります。');
       return;
     }
-    await AppSettings.setSyncEndpoint(url);
+    final changed = await AppSettings.setSyncEndpoint(url);
+    if (changed) {
+      // 旧同期先の画像URLは新しい同期先では無効なので消し、画像を送り直す
+      await ReceiptStore.clearImageUrls();
+    }
     await AppSettings.setMainTitle(_titleCtrl.text);
-    _snack('保存しました。');
+    if (url.isEmpty) {
+      _snack('保存しました。');
+      return;
+    }
+    // 同期先を設定したら、その場で同期してデータを反映する
+    await _syncNow();
+  }
+
+  /// 同期を実行し、結果を表示する（設定画面から）
+  Future<void> _syncNow() async {
+    setState(() => _busy = true);
+    try {
+      final r = await CloudSyncService.sync();
+      _snack(
+        '保存して同期しました（送信 ${r.sentReceipts}件・受信 ${r.receivedChanges}件）',
+      );
+    } on CloudSyncException catch (e) {
+      _snack('保存しました。同期は失敗しました：${e.message}');
+    } catch (_) {
+      _snack('保存しました。同期できませんでした。通信状態を確認してください。');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _testConnection() async {
