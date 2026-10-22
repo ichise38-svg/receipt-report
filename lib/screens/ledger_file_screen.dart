@@ -155,7 +155,8 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
                 title: '新規作成：収支入力テンプレート',
                 body:
                     '空の入力用Excelを作成します。月日・摘要・収入・支出を書き込み、'
-                    '保存したファイルを下の「取り込み」で読み込めます。残高は自動計算されます。',
+                    '保存したファイルを下の「取り込み」で読み込めます。残高は自動計算されます。'
+                    '共有画面でOneDriveなどのアプリを選ぶと、そのまま保存できる場合があります。',
                 buttonLabel: 'テンプレートを作成・共有',
                 onPressed: _createTemplate,
               ),
@@ -166,7 +167,9 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
                 body:
                     '「2025年集計」のような年間集計の表（月日・摘要・収入・支出の見出し）を読み込みます。'
                     '同じ日付・摘要・金額の既存データは重複として無視します。'
-                    '取り込み前に件数を確認できます。',
+                    '取り込み前に件数を確認できます。'
+                    'ファイル選択画面で「OneDrive」（端末にアプリがある場合）を選ぶと、'
+                    'OneDrive上のExcelをそのまま読み込めます。',
                 buttonLabel: 'Excelを選んで取り込む',
                 onPressed: _import,
               ),

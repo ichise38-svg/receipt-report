@@ -92,6 +92,7 @@ class _MemberScreenState extends State<MemberScreen> {
 
   Future<void> _importFile() async {
     try {
+      // ファイル選択画面（端末のOS標準）から OneDrive 上のファイルも選べる
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: const ['csv', 'txt', 'xlsx'],
