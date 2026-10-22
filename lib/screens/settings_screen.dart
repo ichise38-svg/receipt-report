@@ -14,6 +14,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _endpointCtrl = TextEditingController();
   final _titleCtrl = TextEditingController();
+  List<SyncPreset> _presets = [];
   bool _loading = true;
   bool _busy = false;
 
@@ -33,12 +34,85 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _load() async {
     final url = await AppSettings.getSyncEndpoint();
     final title = await AppSettings.getMainTitle();
+    final presets = await AppSettings.getSyncPresets();
     if (!mounted) return;
     setState(() {
       _endpointCtrl.text = url;
       _titleCtrl.text = title;
+      _presets = presets;
       _loading = false;
     });
+  }
+
+  Future<void> _addPreset() async {
+    final nameCtrl = TextEditingController();
+    final urlCtrl = TextEditingController();
+    final result = await showDialog<SyncPreset>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('同期先の候補を追加'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(
+                labelText: '名前（例: OneDrive、Google Apps Script）',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: urlCtrl,
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              decoration: const InputDecoration(
+                labelText: 'URL（https://）',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final name = nameCtrl.text.trim();
+              final url = urlCtrl.text.trim();
+              if (name.isEmpty ||
+                  !(Uri.tryParse(url)?.isScheme('https') ?? false)) {
+                return;
+              }
+              Navigator.pop(ctx, SyncPreset(name: name, url: url));
+            },
+            child: const Text('追加'),
+          ),
+        ],
+      ),
+    );
+    nameCtrl.dispose();
+    urlCtrl.dispose();
+    if (result == null) return;
+    final updated = [..._presets, result];
+    await AppSettings.setSyncPresets(updated);
+    if (!mounted) return;
+    setState(() => _presets = updated);
+    _snack('候補に追加しました。');
+  }
+
+  Future<void> _deletePreset(SyncPreset preset) async {
+    final updated = _presets.where((p) => p != preset).toList();
+    await AppSettings.setSyncPresets(updated);
+    if (!mounted) return;
+    setState(() => _presets = updated);
+  }
+
+  void _usePreset(SyncPreset preset) {
+    setState(() => _endpointCtrl.text = preset.url);
+    _snack('「${preset.name}」のURLを入力しました。保存を押すと反映されます。');
   }
 
   void _snack(String message) {
@@ -116,6 +190,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       labelText: '同期先URL（https://）',
                       border: OutlineInputBorder(),
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '同期先の候補',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 4),
+                  if (_presets.isEmpty)
+                    const Text(
+                      '候補はまだありません。下の「候補を追加」から登録できます。',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  for (final preset in _presets)
+                    Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: const Icon(Icons.cloud_outlined),
+                        title: Text(preset.name),
+                        subtitle: Text(
+                          preset.url,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onTap: () => _usePreset(preset),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          tooltip: '候補から削除',
+                          onPressed: () => _deletePreset(preset),
+                        ),
+                      ),
+                    ),
+                  OutlinedButton.icon(
+                    onPressed: _addPreset,
+                    icon: const Icon(Icons.add),
+                    label: const Text('候補を追加'),
                   ),
                   const SizedBox(height: 12),
                   Row(
