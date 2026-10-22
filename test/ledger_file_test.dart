@@ -124,7 +124,54 @@ void main() {
     final excel = Excel.decodeBytes(Uint8List.fromList(template));
     expect(excel.tables.keys, contains(LedgerFileService.templateSheetName));
     final sheet = excel[LedgerFileService.templateSheetName];
-    expect(sheet.cell(CellIndex.indexByString('C5')).value, isNull);
-    expect(sheet.cell(CellIndex.indexByString('A5')).value, isNull);
+    // 繰越金の入力欄（C4・C5）は0を入れてあり、明細の入力欄（A7以降）は空
+    expect(sheet.cell(CellIndex.indexByString('A7')).value, isNull);
+    expect(sheet.cell(CellIndex.indexByString('C7')).value, isNull);
+  });
+
+  test('年間様式のテンプレートは、見出し・繰越・小計・署名欄を含む', () {
+    final template = LedgerFileService.buildTemplateBytes(year: 2026);
+    final excel = Excel.decodeBytes(Uint8List.fromList(template));
+    final sheet = excel[LedgerFileService.templateSheetName];
+    String t(int c, int r) {
+      final v = sheet
+          .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r))
+          .value;
+      return v is TextCellValue ? v.value.toString() : '';
+    }
+    expect(t(0, 3), '月日');
+    expect(t(1, 3), '摘要');
+    expect(t(2, 3), '収入');
+    expect(t(3, 3), '支出');
+    expect(t(1, 4), '前年度繰越金（現金）');
+    expect(t(1, 5), '前年度繰越金（口座等）');
+    expect(
+      sheet.rows
+          .expand((row) => row)
+          .any((c) => c != null && c.value.toString().contains('報告者')),
+      isTrue,
+    );
+  });
+
+  test('年間様式のテンプレートに入力すると、既存の取り込みで読み込める', () {
+    final template = LedgerFileService.buildTemplateBytes(year: 2026);
+    final excel = Excel.decodeBytes(Uint8List.fromList(template));
+    final sheet = excel[LedgerFileService.templateSheetName];
+    void put(int c, int r, CellValue v) => sheet
+        .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r))
+        .value = v;
+    put(0, 6, TextCellValue('1/10'));
+    put(1, 6, TextCellValue('1月分集金'));
+    put(2, 6, IntCellValue(114000));
+    put(0, 7, TextCellValue('1/12'));
+    put(1, 7, TextCellValue('新年会'));
+    put(3, 7, IntCellValue(33000));
+    final preview = LedgerFileService.parseAnnual(
+      Uint8List.fromList(excel.encode()!),
+      const [],
+    );
+    expect(preview.toAdd.length, 2);
+    expect(preview.incomeTotal, 114000);
+    expect(preview.expenseTotal, 33000);
   });
 }

@@ -1,6 +1,6 @@
-import 'dart:typed_data';
-
 import 'package:excel/excel.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/receipt.dart';
@@ -161,14 +161,20 @@ class LedgerFileService {
     );
   }
 
-  /// 取り込み用の空のExcel（見出し・計算欄つき）を作る
+  /// 年間報告書の様式（サンプル「2025年集計」と同じ構成）の空のExcelを作る
+  ///
+  /// 上部: タイトル・会計・繰越金（現金／口座等）
+  /// 中部: 月日・摘要・収入・支出・収支・残高・備考の明細（行は後から追加できる）
+  /// 下部: 小計・合計、ATM入出金、口座と手持ち現金の確認、報告者・監査欄
   static List<int> buildTemplateBytes({int? year}) {
+    final y = year ?? DateTime.now().year;
     final excel = Excel.createExcel();
     final sheet = excel[templateSheetName];
     excel.delete('Sheet1');
 
     final bold = CellStyle(bold: true);
-    final small = CellStyle(fontSize: 9);
+    final title = CellStyle(bold: true, fontSize: 14);
+    final small = CellStyle(fontSize: 9, fontColorHex: ExcelColor.grey);
     final header = CellStyle(
       bold: true,
       backgroundColorHex: ExcelColor.fromHexString('FFE3F2FD'),
@@ -178,13 +184,30 @@ class LedgerFileService {
       horizontalAlign: HorizontalAlign.Right,
       numberFormat: NumFormat.standard_3,
     );
+    final date = CellStyle(
+      horizontalAlign: HorizontalAlign.Center,
+      numberFormat: NumFormat.custom(formatCode: 'm/d'),
+    );
+    final boldMoney = CellStyle(
+      bold: true,
+      horizontalAlign: HorizontalAlign.Right,
+      numberFormat: NumFormat.standard_3,
+    );
 
-    void put(int col, int row, CellValue value, {CellStyle? style}) {
+    void text(int col, int row, String v, {CellStyle? style}) {
       final cell = sheet.cell(
         CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row),
       );
-      cell.value = value;
+      cell.value = TextCellValue(v);
       if (style != null) cell.cellStyle = style;
+    }
+
+    void num(int col, int row, int v, {CellStyle? style}) {
+      final cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row),
+      );
+      cell.value = IntCellValue(v);
+      cell.cellStyle = style ?? money;
     }
 
     void formula(int col, int row, String f, {CellStyle? style}) {
@@ -192,43 +215,93 @@ class LedgerFileService {
         CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row),
       );
       cell.value = FormulaCellValue(f);
-      if (style != null) cell.cellStyle = style;
+      cell.cellStyle = style ?? money;
     }
 
-    const headerRow = 3;
-    const firstRow = 4;
-    const lastRow = 203; // 200行分の入力欄
-
-    put(
+    // 列: A月日 B摘要 C収入 D支出 E収支 F残高 G備考（0始まり）
+    const headers = ['月日', '摘要', '収入', '支出', '収支', '残高', '備考'];
+    text(0, 0, '$y年度\u3000関桜会\u3000収支報告書', style: title);
+    text(0, 1, '会計\u3000', style: bold);
+    text(
       0,
-      0,
-      TextCellValue('${year ?? DateTime.now().year}年　収支入力（取り込み用）'),
-      style: bold,
-    );
-    put(
-      0,
-      1,
-      TextCellValue(
-        '月日・摘要・収入・支出を入力して保存し、アプリの「ファイルから取り込み」で読み込みます。'
-        '収入と支出の両方に金額がある行は、収入と支出を別々に取り込みます。',
-      ),
+      2,
+      '※ 明細は3行目以降に入力してください。収支と残高は自動計算されます。'
+      '収入と支出を同じ行に書くと、別々の記録として取り込まれます。',
       style: small,
     );
-    const headers = ['月日', '摘要', '収入', '支出', '収支', '残高', '備考'];
     for (var c = 0; c < headers.length; c++) {
-      put(c, headerRow, TextCellValue(headers[c]), style: header);
+      text(c, 3, headers[c], style: header);
     }
 
-    for (var r = firstRow; r <= lastRow; r++) {
-      final n = r + 1; // Excel の行番号（1始まり）
-      formula(4, r, 'IF(COUNT(C$n:D$n)=0,"",N(C$n)-N(D$n))', style: money);
+    // 繰越金（サンプルと同じ2行。報告書画面の繰越金と同じ扱い）
+    const firstData = 6; // Excel行（1始まり）: 明細の最初の行
+    text(1, 4, '前年度繰越金（現金）');
+    num(2, 4, 0);
+    formula(4, 4, 'C4-D4');
+    formula(5, 4, 'E4');
+    text(1, 5, '前年度繰越金（口座等）');
+    num(2, 5, 0);
+    formula(4, 5, 'C5-D5');
+    formula(5, 5, 'F4+E5');
+
+    // 明細の入力欄（200行）。収支・残高は前の行から自動計算
+    const lastData = 205;
+    for (var n = firstData; n <= lastData; n++) {
+      formula(4, n, 'IF(COUNT(C$n:D$n)=0,"",N(C$n)-N(D$n))');
       formula(
         5,
-        r,
-        r == firstRow ? 'IF(E$n="","",E$n)' : 'IF(E$n="","",N(F${n - 1})+E$n)',
-        style: money,
+        n,
+        n == firstData ? 'IF(E$n="","",N(F5)+E$n)' : 'IF(E$n="","",N(F${n - 1})+E$n)',
       );
+      sheet
+          .cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: n - 1))
+          .cellStyle = date;
     }
+
+    // 小計・合計（サンプルと同じ式。範囲は入力欄全体）
+    const subtotalRow = lastData + 2;
+    text(0, subtotalRow - 1, '$y年\u3000小計', style: bold);
+    formula(2, subtotalRow - 1, 'SUM(C$firstData:C$lastData)', style: boldMoney);
+    formula(3, subtotalRow - 1, 'SUM(D$firstData:D$lastData)', style: boldMoney);
+    formula(4, subtotalRow - 1, 'C$subtotalRow-D$subtotalRow', style: boldMoney);
+    text(0, subtotalRow, '合計（前年繰越金 + $y年小計）', style: bold);
+    formula(2, subtotalRow, 'C${subtotalRow - 1}+C4+C5', style: boldMoney);
+    formula(3, subtotalRow, 'D${subtotalRow - 1}', style: boldMoney);
+    formula(4, subtotalRow, 'C$subtotalRow-D$subtotalRow', style: boldMoney);
+
+    // ATM入出金（口座の出納）。サンプルと同じ：入金・出金・残高
+    final atmHead = subtotalRow + 4;
+    text(1, atmHead, 'ATM入出金', style: bold);
+    text(2, atmHead, '入金', style: header);
+    text(3, atmHead, '出金', style: header);
+    text(5, atmHead, '残高', style: header);
+    text(0, atmHead + 1, '月日', style: header);
+    text(1, atmHead + 1, '摘要', style: header);
+    text(6, atmHead + 1, '備考', style: header);
+    formula(5, atmHead + 2, 'C5+C${atmHead + 2}-D${atmHead + 2}');
+    for (var n = atmHead + 2; n <= atmHead + 41; n++) {
+      if (n > atmHead + 2) {
+        formula(5, n, 'IF(COUNT(C$n:D$n)=0,"",N(F${n - 1})+N(C$n)-N(D$n))');
+      }
+    }
+
+    // 残高の確認（口座・手持ち現金・合計・差額）
+    final checkRow = atmHead + 44;
+    text(3, checkRow, '口座', style: bold);
+    num(5, checkRow, 0, style: boldMoney);
+    text(3, checkRow + 1, '手持ち現金', style: bold);
+    num(5, checkRow + 1, 0, style: boldMoney);
+    text(4, checkRow + 2, '合計', style: bold);
+    formula(5, checkRow + 2, 'F$checkRow+F${checkRow + 1}', style: boldMoney);
+    text(1, checkRow + 4, '口座+手持ち現金の合計', style: bold);
+    formula(2, checkRow + 4, 'F${checkRow + 2}', style: boldMoney);
+    text(3, checkRow + 4, '（残高計算額との差）', style: small);
+    formula(2, checkRow + 5, 'C${checkRow + 4}-E$subtotalRow', style: boldMoney);
+
+    // 署名欄
+    text(5, checkRow + 8, '報告者', style: bold);
+    text(5, checkRow + 9, '監査', style: bold);
+
     final encoded = excel.encode();
     if (encoded == null) {
       throw Exception('テンプレートの作成に失敗しました');
@@ -236,22 +309,37 @@ class LedgerFileService {
     return encoded;
   }
 
-  /// テンプレートを共有シートで保存・送信する
-  static Future<void> shareTemplate() async {
-    final bytes = buildTemplateBytes();
+  /// テンプレートを作成し、保存先を選んで保存する。
+  /// 戻り値: 保存先のパス（共有シートを使った場合は null）
+  static Future<String?> saveTemplate({int? year}) async {
+    final bytes = Uint8List.fromList(buildTemplateBytes(year: year));
+    const fileName = '収支報告書_入力用.xlsx';
+    if (!kIsWeb) {
+      // 端末・クラウドのフォルダを選んで保存（Android/iOSは保存先の選択画面）
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: '保存先を選んでください（OneDriveなどのクラウドも選べます）',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: const ['xlsx'],
+        bytes: bytes,
+      );
+      return path;
+    }
+    // Web は保存ダイアログが使えないため、共有シートから保存先を選ぶ
     await SharePlus.instance.share(
       ShareParams(
         files: [
           XFile.fromData(
-            Uint8List.fromList(bytes),
-            name: '収支入力テンプレート.xlsx',
+            bytes,
+            name: fileName,
             mimeType:
                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           ),
         ],
-        subject: '収支入力テンプレート',
+        subject: '収支報告書（入力用）',
       ),
     );
+    return null;
   }
 
   // ---------- 内部処理 ----------

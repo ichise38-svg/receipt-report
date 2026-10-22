@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -27,7 +28,12 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
   Future<void> _createTemplate() async {
     setState(() => _busy = true);
     try {
-      await LedgerFileService.shareTemplate();
+      final path = await LedgerFileService.saveTemplate();
+      if (path != null) {
+        _toast('保存しました。');
+      } else if (!kIsWeb) {
+        _toast('保存をキャンセルしました。');
+      }
     } catch (_) {
       _toast('テンプレートを作成できませんでした。');
     } finally {
@@ -154,10 +160,11 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
                 icon: Icons.note_add,
                 title: '新規作成：収支入力テンプレート',
                 body:
-                    '空の入力用Excelを作成します。月日・摘要・収入・支出を書き込み、'
-                    '保存したファイルを下の「取り込み」で読み込めます。残高は自動計算されます。'
+                    'サンプルと同じ様式（繰越金・月日・摘要・収入・支出・残高・小計・ATM入出金・署名欄）の空のExcelを作成します。'
+                    '保存先（端末・OneDriveなどのクラウドフォルダ）を選べます。'
+                    '記入後、下の「取り込み」で読み込めます。'
                     '共有画面でOneDriveなどのアプリを選ぶと、そのまま保存できる場合があります。',
-                buttonLabel: 'テンプレートを作成・共有',
+                buttonLabel: '報告書の様式を作成・保存先を選ぶ',
                 onPressed: _createTemplate,
               ),
               const SizedBox(height: 12),
