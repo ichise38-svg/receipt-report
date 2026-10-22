@@ -3,30 +3,41 @@
  * 外部の有料APIは使いません。
  *
  * 設定手順:
- * 1. Google スプレッドシートを新規作成（会員全員で同じものを使う）
- * 2. 拡張機能 > Apps Script を開き、このコードを貼り付け
+ * 1. Google スプレッドシートを新規作成（管理用・会員全員で同じURLを使う）
+ * 2. 拡張機能 > Apps Script を開き、このコードを貼り付けて保存
  * 3. デプロイ > 新しいデプロイ > 種類「ウェブアプリ」
  *    - 実行ユーザー: 自分 / アクセスできるユーザー: 全員
- * 4. 発行されたURL（https://script.google.com/.../exec）をアプリの「設定」で入力する
+ * 4. 発行されたURL（https://script.google.com/.../exec）をアプリに組み込む
  *
- * 保存先:
- * - 「明細」シート: レシート・収入（読みやすい列 ＋ 同期用のデータ列）
- * - 「参加者」シート: 参加者名簿（同期用）
- * - 「口座出納」シート: 口座の出納（ATM入出金・同期用）
+ * 保存先（年別にファイルを自動作成）:
+ * - 管理用スプレッドシート（このファイル）:
+ *     「参加者」 … 参加者名簿（年をまたいで共通）
+ *     「年別ファイル」 … 年と、その年のスプレッドシートのID・URL の一覧
+ *     「ID索引」 … 明細・口座出納のIDがどの年のファイルにあるかの一覧
+ * - 「関桜会収支 2026」「関桜会収支 2027」… 年ごとのスプレッドシート（Googleドライブの「関桜会収支データ」フォルダ）
+ *     「明細」 … レシート・収入（その年の日付のもの）
+ *     「口座出納」 … 口座の出納（その年の日付のもの）
  * - 「収支レシート画像」フォルダ（Googleドライブ）: レシート画像
+ *
+ * 年の判定: 明細・口座出納の日付（yyyy-MM-dd）の年で振り分けます。
+ * 日付を後から別の年に変えた場合は、古い年のファイルから移し、新しい年のファイルに保存します。
  *
  * 同期の考え方:
  * - 更新日時（updatedMs）が新しい方を採用（最後の更新優先）。削除も全員に反映。
  * - 同期時刻（syncMs）で差分を判定し、前回以降に変わった分だけ返す。
  * - 同時書き込みはロックで直列化する。
  *
- * 注意: 旧バージョンの「明細」シートを使っていた場合は、シートを削除してから
- *       この版を使ってください（列構成が異なるため）。
+ * 注意: 以前の版で作った「明細」シートがこの管理用ファイルに残っていても使いません。
+ *       混乱を避けるため削除してください。
  */
-const DETAIL_SHEET = '明細';
 const MEMBER_SHEET = '参加者';
+const YEAR_SHEET = '年別ファイル';
+const KEY_SHEET = 'ID索引';
+const DETAIL_SHEET = '明細';
 const BANK_SHEET = '口座出納';
 const IMAGE_FOLDER = '収支レシート画像';
+const DATA_FOLDER = '関桜会収支データ';
+const BOOK_PREFIX = '関桜会収支 ';
 
 const DETAIL_HEADERS = [
   'ID', '区分', '日付', '店舗・摘要', 'カテゴリ', '金額（円）', 'メモ',
@@ -34,6 +45,8 @@ const DETAIL_HEADERS = [
 ];
 const MEMBER_HEADERS = ['ID', '氏名', 'メモ', '更新ms', '削除', '同期ms', 'データ'];
 const BANK_HEADERS = ['ID', '日付', '区分', '摘要', '金額（円）', '更新ms', '削除', '同期ms', 'データ'];
+const YEAR_HEADERS = ['年', 'ファイルID', 'ファイル名', 'URL'];
+const KEY_HEADERS = ['種別', 'ID', '年'];
 
 // 明細の列番号（1始まり）
 const R_COL = { id: 1, kind: 2, date: 3, store: 4, category: 5, amount: 6, memo: 7,
@@ -64,40 +77,39 @@ function doPost(e) {
   }
 }
 
-/** 同期本体：送られた変更を反映し、前回以降に変わった分を返す */
+/** 同期本体：送られた変更を年別ファイルへ反映し、前回以降に変わった分を返す */
 function sync_(data) {
   const now = Date.now();
-  const rSheet = getSheet_(DETAIL_SHEET, DETAIL_HEADERS);
+  const ctx = openContext_();
   const mSheet = getSheet_(MEMBER_SHEET, MEMBER_HEADERS);
-  const bSheet = getSheet_(BANK_SHEET, BANK_HEADERS);
   const haveImages = data.haveImages || {};
   const acceptedIds = {}; // 反映（採用）された明細ID
-  const sendBack = {};    // サーバー側が新しいため採用しなかった明細・参加者（端末へ返す）
+  const sendBack = {};    // サーバー側が新しいため採用しなかったもの（端末へ返す）
   const imageUrls = {};   // 今回保存した画像のURL（ID→URL）
 
   // --- 明細: 送られてきた変更を反映 ---
-  const rIndex = indexRows_(rSheet);
   (data.receipts || []).forEach(function (r) {
     const incomingMs = Date.parse(r.updatedAt) || 0;
-    const rowNo = rIndex[r.id];
-    const current = rowNo ? readReceiptRow_(rSheet, rowNo) : null;
-    if (current && current.updated >= incomingMs) {
+    const cur = readCurrent_(ctx, 'R', r.id);
+    const curUpdated = cur ? Number(cur.values[R_COL.updated - 1]) || 0 : 0;
+    if (cur && curUpdated >= incomingMs) {
       // サーバーの方が新しい/同じ: 採用せず、サーバーの内容を端末へ返す
       sendBack[r.id] = true;
       return;
     }
+    const curImage = cur ? String(cur.values[R_COL.imageUrl - 1] || '') : '';
 
     let imageUrl = '';
     if (r.deleted) {
-      if (current && current.imageUrl) trashImage_(current.imageUrl);
+      if (curImage) trashImage_(curImage);
     } else if (r.imageBase64) {
-      if (current && current.imageUrl) trashImage_(current.imageUrl);
+      if (curImage) trashImage_(curImage);
       imageUrl = saveImage_(r.id, r.imageBase64, r.imageMimeType);
       imageUrls[r.id] = imageUrl;
     } else if (r.imageUrl) {
-      imageUrl = current && current.imageUrl ? current.imageUrl : r.imageUrl;
+      imageUrl = curImage || r.imageUrl;
     } else {
-      if (current && current.imageUrl) trashImage_(current.imageUrl);
+      if (curImage) trashImage_(curImage);
     }
 
     const stored = JSON.parse(JSON.stringify(r));
@@ -105,6 +117,7 @@ function sync_(data) {
     delete stored.imageMimeType;
     stored.imageUrl = imageUrl;
 
+    const year = yearOf_(r.date);
     const row = [
       r.id,
       r.kind === 'income' ? '収入' : '支出',
@@ -120,35 +133,33 @@ function sync_(data) {
       JSON.stringify(stored),
       r.event || '',
     ];
-    if (rowNo) {
-      rSheet.getRange(rowNo, 1, 1, row.length).setValues([row]);
-    } else {
-      rSheet.appendRow(row);
-      rIndex[r.id] = rSheet.getLastRow();
-    }
+    if (cur && cur.year !== year) removeRow_(ctx, 'R', cur.year, r.id);
+    putRow_(ctx, 'R', year, r.id, row);
     acceptedIds[r.id] = true;
   });
 
-  // --- 明細: 前回以降に変わった分を返す ---
+  // --- 明細: 前回以降に変わった分を返す（全年分） ---
   const since = Number(data.since) || 0;
   const receipts = [];
-  readAllRows_(rSheet).forEach(function (row) {
-    if (!row[R_COL.id - 1]) return;
-    const id = String(row[R_COL.id - 1]);
-    const synced = Number(row[R_COL.synced - 1]) || 0;
-    if (synced <= since && !sendBack[id]) return;
-    const obj = JSON.parse(String(row[R_COL.json - 1]));
-    obj.imageUrl = String(row[R_COL.imageUrl - 1] || '');
-    obj.deleted = row[R_COL.deleted - 1] === '削除';
-    // 端末が持っていない画像だけ返す（通信量の節約）
-    if (!acceptedIds[id] && obj.imageUrl && haveImages[id] !== obj.imageUrl) {
-      obj.imageBase64 = readImageBase64_(obj.imageUrl);
-      obj.imageMimeType = 'image/jpeg';
-    }
-    receipts.push(obj);
+  eachYear_(ctx, function (book) {
+    readAllRows_(book.detail, R_COL.json).forEach(function (row) {
+      if (!row[R_COL.id - 1]) return;
+      const id = String(row[R_COL.id - 1]);
+      const synced = Number(row[R_COL.synced - 1]) || 0;
+      if (synced <= since && !sendBack[id]) return;
+      const obj = JSON.parse(String(row[R_COL.json - 1]));
+      obj.imageUrl = String(row[R_COL.imageUrl - 1] || '');
+      obj.deleted = row[R_COL.deleted - 1] === '削除';
+      // 端末が持っていない画像だけ返す（通信量の節約）
+      if (!acceptedIds[id] && obj.imageUrl && haveImages[id] !== obj.imageUrl) {
+        obj.imageBase64 = readImageBase64_(obj.imageUrl);
+        obj.imageMimeType = 'image/jpeg';
+      }
+      receipts.push(obj);
+    });
   });
 
-  // --- 参加者: 送られてきた変更を反映 ---
+  // --- 参加者: 送られてきた変更を反映（年をまたいで共通） ---
   const mIndex = indexRows_(mSheet, M_COL.id);
   (data.members || []).forEach(function (m) {
     const incomingMs = Date.parse(m.updatedAt) || 0;
@@ -180,26 +191,24 @@ function sync_(data) {
 
   // --- 参加者: 前回以降に変わった分を返す ---
   const members = [];
-  readAllRows_(mSheet, 7).forEach(function (row) {
+  readAllRows_(mSheet, M_COL.json).forEach(function (row) {
     if (!row[M_COL.id - 1]) return;
     const synced = Number(row[M_COL.synced - 1]) || 0;
     if (synced <= since && !sendBack[String(row[M_COL.id - 1])]) return;
     members.push(JSON.parse(String(row[M_COL.json - 1])));
   });
 
-  // --- 口座出納: 送られてきた変更を反映（後勝ち・削除は墓標） ---
-  const bIndex = indexRows_(bSheet, B_COL.id);
+  // --- 口座出納: 送られてきた変更を反映（後勝ち・削除は墓標）---
   (data.bankEntries || []).forEach(function (b) {
     const incomingMs = Date.parse(b.updatedAt) || 0;
-    const rowNo = bIndex[b.id];
-    if (rowNo) {
-      const current = Number(bSheet.getRange(rowNo, B_COL.updated).getValue()) || 0;
-      if (current >= incomingMs) {
-        sendBack[b.id] = true;
-        return;
-      }
+    const cur = readCurrent_(ctx, 'B', b.id);
+    const curUpdated = cur ? Number(cur.values[B_COL.updated - 1]) || 0 : 0;
+    if (cur && curUpdated >= incomingMs) {
+      sendBack[b.id] = true;
+      return;
     }
     const stored = JSON.parse(JSON.stringify(b));
+    const year = yearOf_(b.date);
     const row = [
       b.id,
       b.date || '',
@@ -211,21 +220,19 @@ function sync_(data) {
       now,
       JSON.stringify(stored),
     ];
-    if (rowNo) {
-      bSheet.getRange(rowNo, 1, 1, row.length).setValues([row]);
-    } else {
-      bSheet.appendRow(row);
-      bIndex[b.id] = bSheet.getLastRow();
-    }
+    if (cur && cur.year !== year) removeRow_(ctx, 'B', cur.year, b.id);
+    putRow_(ctx, 'B', year, b.id, row);
   });
 
-  // --- 口座出納: 前回以降に変わった分を返す ---
+  // --- 口座出納: 前回以降に変わった分を返す（全年分） ---
   const bankEntries = [];
-  readAllRows_(bSheet, B_COL.json).forEach(function (row) {
-    if (!row[B_COL.id - 1]) return;
-    const synced = Number(row[B_COL.synced - 1]) || 0;
-    if (synced <= since && !sendBack[String(row[B_COL.id - 1])]) return;
-    bankEntries.push(JSON.parse(String(row[B_COL.json - 1])));
+  eachYear_(ctx, function (book) {
+    readAllRows_(book.bank, B_COL.json).forEach(function (row) {
+      if (!row[B_COL.id - 1]) return;
+      const synced = Number(row[B_COL.synced - 1]) || 0;
+      if (synced <= since && !sendBack[String(row[B_COL.id - 1])]) return;
+      bankEntries.push(JSON.parse(String(row[B_COL.json - 1])));
+    });
   });
 
   return {
@@ -238,6 +245,139 @@ function sync_(data) {
   };
 }
 
+/** 作業用の情報（年別ファイル一覧・ID索引）を読み込む */
+function openContext_() {
+  const yearSheet = getSheet_(YEAR_SHEET, YEAR_HEADERS);
+  const keySheet = getSheet_(KEY_SHEET, KEY_HEADERS);
+  const ctx = {
+    books: {},      // 年 → { detail, bank, rIdx, bIdx }（開いた年のみ）
+    years: {},      // 年 → スプレッドシートID
+    yearSheet: yearSheet,
+    keySheet: keySheet,
+    keyYear: {},    // '種別|ID' → 年
+    keyRow: {},     // '種別|ID' → 行番号
+  };
+  readAllRows_(yearSheet, YEAR_HEADERS.length).forEach(function (row) {
+    if (!row[0]) return;
+    ctx.years[String(row[0])] = String(row[1]);
+  });
+  readAllRows_(keySheet, KEY_HEADERS.length).forEach(function (row, i) {
+    if (!row[1]) return;
+    const key = String(row[0]) + '|' + String(row[1]);
+    ctx.keyYear[key] = String(row[2]);
+    ctx.keyRow[key] = i + 2;
+  });
+  return ctx;
+}
+
+/** 年のファイルを開く。create=true なら無ければ作る */
+function yearBook_(ctx, year, create) {
+  const y = String(year);
+  if (ctx.books[y]) return ctx.books[y];
+  let id = ctx.years[y];
+  if (!id) {
+    if (!create) return null;
+    const ss = SpreadsheetApp.create(BOOK_PREFIX + y);
+    DriveApp.getFileById(ss.getId()).moveTo(getDataFolder_());
+    // 新規ファイルの既定シートを「明細」に使う
+    ss.getSheets()[0].setName(DETAIL_SHEET);
+    ss.getSheets()[0].appendRow(DETAIL_HEADERS);
+    ss.getSheets()[0].setFrozenRows(1);
+    ss.insertSheet(BANK_SHEET).appendRow(BANK_HEADERS);
+    ss.getSheetByName(BANK_SHEET).setFrozenRows(1);
+    id = ss.getId();
+    ctx.years[y] = id;
+    ctx.yearSheet.appendRow([Number(y), id, ss.getName(), ss.getUrl()]);
+  }
+  const ss = SpreadsheetApp.openById(id);
+  const book = {
+    detail: getSheetIn_(ss, DETAIL_SHEET, DETAIL_HEADERS),
+    bank: getSheetIn_(ss, BANK_SHEET, BANK_HEADERS),
+    rIdx: null,
+    bIdx: null,
+  };
+  ctx.books[y] = book;
+  return book;
+}
+
+/** 既存の年ファイルすべてに対して処理を行う */
+function eachYear_(ctx, fn) {
+  Object.keys(ctx.years).sort().forEach(function (year) {
+    const book = yearBook_(ctx, year, false);
+    if (book) fn(book);
+  });
+}
+
+/** 種別（R=明細 / B=口座出納）の ID→行番号 マップ（必要になったとき一度だけ作る） */
+function rowMap_(book, kind) {
+  const key = kind === 'R' ? 'rIdx' : 'bIdx';
+  if (!book[key]) {
+    const sheet = kind === 'R' ? book.detail : book.bank;
+    book[key] = indexRows_(sheet, kind === 'R' ? R_COL.id : B_COL.id);
+  }
+  return book[key];
+}
+
+/** ID の現在の保存先（年）と行の値を返す。無ければ null */
+function readCurrent_(ctx, kind, id) {
+  const year = ctx.keyYear[kind + '|' + String(id)];
+  if (!year) return null;
+  const book = yearBook_(ctx, year, false);
+  if (!book) return null;
+  const rowNo = rowMap_(book, kind)[String(id)];
+  if (!rowNo) return null;
+  const sheet = kind === 'R' ? book.detail : book.bank;
+  const width = kind === 'R' ? R_COL.json : B_COL.json;
+  return { year: year, values: sheet.getRange(rowNo, 1, 1, width).getValues()[0] };
+}
+
+/** 別の年のファイルから行を取り除く（年をまたいだ変更用） */
+function removeRow_(ctx, kind, year, id) {
+  const book = yearBook_(ctx, year, false);
+  if (!book) return;
+  const rowNo = rowMap_(book, kind)[String(id)];
+  if (!rowNo) return;
+  const sheet = kind === 'R' ? book.detail : book.bank;
+  sheet.deleteRow(rowNo);
+  // 行番号がずれるため、索引を作り直す
+  if (kind === 'R') book.rIdx = null;
+  else book.bIdx = null;
+}
+
+/** 年のファイルに行を書き込み（既存なら上書き、無ければ追加）し、ID索引を更新 */
+function putRow_(ctx, kind, year, id, row) {
+  const book = yearBook_(ctx, year, true);
+  const sheet = kind === 'R' ? book.detail : book.bank;
+  const map = rowMap_(book, kind);
+  const rowNo = map[String(id)];
+  if (rowNo) {
+    sheet.getRange(rowNo, 1, 1, row.length).setValues([row]);
+  } else {
+    sheet.appendRow(row);
+    map[String(id)] = sheet.getLastRow();
+  }
+  setKey_(ctx, kind, id, year);
+}
+
+/** ID索引（どの年にあるか）を更新 */
+function setKey_(ctx, kind, id, year) {
+  const key = kind + '|' + String(id);
+  ctx.keyYear[key] = String(year);
+  const rowNo = ctx.keyRow[key];
+  if (rowNo) {
+    ctx.keySheet.getRange(rowNo, 3).setValue(Number(year));
+  } else {
+    ctx.keySheet.appendRow([kind, String(id), Number(year)]);
+    ctx.keyRow[key] = ctx.keySheet.getLastRow();
+  }
+}
+
+/** 日付（yyyy-MM-dd）の年。日付が無い・不正なら今年（東京時間）にする */
+function yearOf_(dateStr) {
+  const m = /^(\d{4})/.exec(String(dateStr || ''));
+  return m ? m[1] : Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy');
+}
+
 /** 口座出納の区分を表示用の語にする（端末の kind 名に合わせる） */
 function bankKindLabel_(kind) {
   if (kind === 'withdraw') return '出金';
@@ -246,7 +386,10 @@ function bankKindLabel_(kind) {
 }
 
 function getSheet_(name, headers) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  return getSheetIn_(SpreadsheetApp.getActiveSpreadsheet(), name, headers);
+}
+
+function getSheetIn_(ss, name, headers) {
   let sheet = ss.getSheetByName(name);
   if (!sheet) {
     sheet = ss.insertSheet(name);
@@ -275,14 +418,6 @@ function readAllRows_(sheet, width) {
   if (last < 2) return [];
   const w = width || R_COL.json;
   return sheet.getRange(2, 1, last - 1, w).getValues();
-}
-
-function readReceiptRow_(sheet, rowNo) {
-  const row = sheet.getRange(rowNo, 1, 1, R_COL.json).getValues()[0];
-  return {
-    updated: Number(row[R_COL.updated - 1]) || 0,
-    imageUrl: String(row[R_COL.imageUrl - 1] || ''),
-  };
 }
 
 function saveImage_(id, b64, mime) {
@@ -321,8 +456,16 @@ function readImageBase64_(url) {
 }
 
 function getImageFolder_() {
-  const it = DriveApp.getFoldersByName(IMAGE_FOLDER);
-  return it.hasNext() ? it.next() : DriveApp.createFolder(IMAGE_FOLDER);
+  return getNamedFolder_(IMAGE_FOLDER);
+}
+
+function getDataFolder_() {
+  return getNamedFolder_(DATA_FOLDER);
+}
+
+function getNamedFolder_(name) {
+  const it = DriveApp.getFoldersByName(name);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(name);
 }
 
 function json_(obj) {
