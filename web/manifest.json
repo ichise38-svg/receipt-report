@@ -1,11 +1,11 @@
 {
-    "name": "receipt_report",
-    "short_name": "receipt_report",
-    "start_url": ".",
+    "name": "Receipt Report 関桜会 収支管理",
+    "short_name": "関桜会収支",
+    "start_url": "./",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FFFFFF",
+    "theme_color": "#1E88E5",
+    "description": "関桜会の収入・支出の記録と会計報告書（PDF/Excel）の作成",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
@@ -30,6 +30,13 @@
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "maskable"
+        },
+        {
+            "src": "icons/apple-touch-icon.png",
+            "sizes": "180x180",
+            "type": "image/png"
         }
-    ]
+    ],
+    "scope": "./",
+    "lang": "ja"
 }
