@@ -2,10 +2,10 @@ import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
 import 'package:intl/intl.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../models/receipt.dart';
 import 'annual_report.dart';
+import 'xlsx_save.dart';
 
 /// 年間収支報告書を Excel(.xlsx) で書き出す
 ///
@@ -250,18 +250,10 @@ class ExcelExportService {
       carryCash: carryCash,
       carryBank: carryBank,
     );
-    await SharePlus.instance.share(
-      ShareParams(
-        files: [
-          XFile.fromData(
-            Uint8List.fromList(bytes),
-            name: fileNameFor(title),
-            mimeType:
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          ),
-        ],
-        subject: '収支報告書 $title',
-      ),
+    await saveXlsxBytes(
+      bytes: bytes,
+      fileName: fileNameFor(title),
+      dialogTitle: '保存先を選んでください（OneDriveなどのクラウドも選べます）',
     );
   }
 }

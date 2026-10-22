@@ -2,10 +2,10 @@ import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
 import 'package:intl/intl.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../models/receipt.dart';
 import 'event_report.dart';
+import 'xlsx_save.dart';
 
 /// イベント別会計報告書を Excel(.xlsx) で書き出す
 ///
@@ -222,18 +222,10 @@ class EventExcelService {
       participants: participants,
       participantNames: participantNames,
     );
-    await SharePlus.instance.share(
-      ShareParams(
-        files: [
-          XFile.fromData(
-            Uint8List.fromList(bytes),
-            name: fileNameFor(eventName),
-            mimeType:
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          ),
-        ],
-        subject: '会計報告書 $eventName',
-      ),
+    await saveXlsxBytes(
+      bytes: bytes,
+      fileName: fileNameFor(eventName),
+      dialogTitle: '保存先を選んでください（OneDriveなどのクラウドも選べます）',
     );
   }
 }
