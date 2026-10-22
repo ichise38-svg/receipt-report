@@ -139,12 +139,27 @@ void main() {
           .value;
       return v is TextCellValue ? v.value.toString() : '';
     }
+
     expect(t(0, 3), '月日');
     expect(t(1, 3), '摘要');
     expect(t(2, 3), '収入');
     expect(t(3, 3), '支出');
     expect(t(1, 4), '前年度繰越金（現金）');
     expect(t(1, 5), '前年度繰越金（口座等）');
+    // 数式は表示行（1始まり）で書かれていること。残高の参照先を検査する
+    String f(int c, int r) {
+      final v = sheet
+          .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r))
+          .value;
+      return v is FormulaCellValue ? v.formula : '';
+    }
+
+    expect(f(5, 4), 'E5'); // 現金繰越（表示行5）の残高
+    expect(f(5, 5), 'F5+E6'); // 口座繰越（表示行6）は現金の残高に加算
+    expect(f(5, 6), 'IF(E7="","",N(F6)+E7)'); // 明細1行目は口座繰越の残高から
+    expect(f(5, 7), 'IF(E8="","",N(F7)+E8)'); // 2行目以降は前の行の残高
+    expect(f(2, 208), 'C208+C5+C6'); // 合計（表示行209）の収入
+
     expect(
       sheet.rows
           .expand((row) => row)
@@ -157,9 +172,12 @@ void main() {
     final template = LedgerFileService.buildTemplateBytes(year: 2026);
     final excel = Excel.decodeBytes(Uint8List.fromList(template));
     final sheet = excel[LedgerFileService.templateSheetName];
-    void put(int c, int r, CellValue v) => sheet
-        .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r))
-        .value = v;
+    void put(int c, int r, CellValue v) =>
+        sheet
+                .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r))
+                .value =
+            v;
+    // 明細は表示行7から（0始まりの行6から）
     put(0, 6, TextCellValue('1/10'));
     put(1, 6, TextCellValue('1月分集金'));
     put(2, 6, IntCellValue(114000));

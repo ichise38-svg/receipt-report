@@ -233,74 +233,87 @@ class LedgerFileService {
       text(c, 3, headers[c], style: header);
     }
 
-    // 繰越金（サンプルと同じ2行。報告書画面の繰越金と同じ扱い）
-    const firstData = 6; // Excel行（1始まり）: 明細の最初の行
-    text(1, 4, '前年度繰越金（現金）');
-    num(2, 4, 0);
-    formula(4, 4, 'C4-D4');
-    formula(5, 4, 'E4');
-    text(1, 5, '前年度繰越金（口座等）');
-    num(2, 5, 0);
-    formula(4, 5, 'C5-D5');
-    formula(5, 5, 'F4+E5');
+    // ここから下は Excel の表示行（1始まり）で指定する。
+    // 関数の行引数は 0始まりなので、rowIndex = 表示行 - 1 に変換する。
+    void cellAt(int col, int excelRow, String v, {CellStyle? style}) =>
+        text(col, excelRow - 1, v, style: style);
+    void numAt(int col, int excelRow, int v, {CellStyle? style}) =>
+        num(col, excelRow - 1, v, style: style);
+    void fx(int col, int excelRow, String f, {CellStyle? style}) =>
+        formula(col, excelRow - 1, f, style: style);
 
-    // 明細の入力欄（200行）。収支・残高は前の行から自動計算
-    const lastData = 205;
+    // 繰越金（表示行5・6）
+    cellAt(1, 5, '前年度繰越金（現金）');
+    numAt(2, 5, 0);
+    fx(4, 5, 'C5-D5');
+    fx(5, 5, 'E5');
+    cellAt(1, 6, '前年度繰越金（口座等）');
+    numAt(2, 6, 0);
+    fx(4, 6, 'C6-D6');
+    fx(5, 6, 'F5+E6');
+
+    // 明細（表示行7〜206）。収支・残高は前の行から自動計算
+    const firstData = 7;
+    const lastData = 206;
     for (var n = firstData; n <= lastData; n++) {
-      formula(4, n, 'IF(COUNT(C$n:D$n)=0,"",N(C$n)-N(D$n))');
-      formula(
+      fx(4, n, 'IF(COUNT(C$n:D$n)=0,"",N(C$n)-N(D$n))');
+      fx(
         5,
         n,
-        n == firstData ? 'IF(E$n="","",N(F5)+E$n)' : 'IF(E$n="","",N(F${n - 1})+E$n)',
+        n == firstData
+            ? 'IF(E$n="","",N(F6)+E$n)'
+            : 'IF(E$n="","",N(F${n - 1})+E$n)',
       );
       sheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: n - 1))
-          .cellStyle = date;
+              .cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: n - 1))
+              .cellStyle =
+          date;
     }
 
-    // 小計・合計（サンプルと同じ式。範囲は入力欄全体）
-    const subtotalRow = lastData + 2;
-    text(0, subtotalRow - 1, '$y年\u3000小計', style: bold);
-    formula(2, subtotalRow - 1, 'SUM(C$firstData:C$lastData)', style: boldMoney);
-    formula(3, subtotalRow - 1, 'SUM(D$firstData:D$lastData)', style: boldMoney);
-    formula(4, subtotalRow - 1, 'C$subtotalRow-D$subtotalRow', style: boldMoney);
-    text(0, subtotalRow, '合計（前年繰越金 + $y年小計）', style: bold);
-    formula(2, subtotalRow, 'C${subtotalRow - 1}+C4+C5', style: boldMoney);
-    formula(3, subtotalRow, 'D${subtotalRow - 1}', style: boldMoney);
-    formula(4, subtotalRow, 'C$subtotalRow-D$subtotalRow', style: boldMoney);
+    // 小計（表示行208）・合計（表示行209）
+    const subtotal = lastData + 2; // 208
+    const total = subtotal + 1; // 209
+    cellAt(0, subtotal, '$y年\u3000小計', style: bold);
+    fx(2, subtotal, 'SUM(C$firstData:C$lastData)', style: boldMoney);
+    fx(3, subtotal, 'SUM(D$firstData:D$lastData)', style: boldMoney);
+    fx(4, subtotal, 'C$subtotal-D$subtotal', style: boldMoney);
+    cellAt(0, total, '合計（前年繰越金 + $y年小計）', style: bold);
+    fx(2, total, 'C$subtotal+C5+C6', style: boldMoney);
+    fx(3, total, 'D$subtotal', style: boldMoney);
+    fx(4, total, 'C$total-D$total', style: boldMoney);
 
-    // ATM入出金（口座の出納）。サンプルと同じ：入金・出金・残高
-    final atmHead = subtotalRow + 4;
-    text(1, atmHead, 'ATM入出金', style: bold);
-    text(2, atmHead, '入金', style: header);
-    text(3, atmHead, '出金', style: header);
-    text(5, atmHead, '残高', style: header);
-    text(0, atmHead + 1, '月日', style: header);
-    text(1, atmHead + 1, '摘要', style: header);
-    text(6, atmHead + 1, '備考', style: header);
-    formula(5, atmHead + 2, 'C5+C${atmHead + 2}-D${atmHead + 2}');
-    for (var n = atmHead + 2; n <= atmHead + 41; n++) {
-      if (n > atmHead + 2) {
-        formula(5, n, 'IF(COUNT(C$n:D$n)=0,"",N(F${n - 1})+N(C$n)-N(D$n))');
-      }
+    // ATM入出金（表示行213: 見出し, 214: 項目名, 215〜254: 入力欄）
+    const atmTitle = total + 4; // 213
+    const atmFirst = atmTitle + 2; // 215
+    const atmLast = atmFirst + 39; // 254
+    cellAt(1, atmTitle, 'ATM入出金', style: bold);
+    cellAt(2, atmTitle, '入金', style: header);
+    cellAt(3, atmTitle, '出金', style: header);
+    cellAt(5, atmTitle, '残高', style: header);
+    cellAt(0, atmTitle + 1, '月日', style: header);
+    cellAt(1, atmTitle + 1, '摘要', style: header);
+    cellAt(6, atmTitle + 1, '備考', style: header);
+    fx(5, atmFirst, 'C6+C$atmFirst-D$atmFirst');
+    for (var n = atmFirst + 1; n <= atmLast; n++) {
+      fx(5, n, 'IF(COUNT(C$n:D$n)=0,"",N(F${n - 1})+N(C$n)-N(D$n))');
     }
 
-    // 残高の確認（口座・手持ち現金・合計・差額）
-    final checkRow = atmHead + 44;
-    text(3, checkRow, '口座', style: bold);
-    num(5, checkRow, 0, style: boldMoney);
-    text(3, checkRow + 1, '手持ち現金', style: bold);
-    num(5, checkRow + 1, 0, style: boldMoney);
-    text(4, checkRow + 2, '合計', style: bold);
-    formula(5, checkRow + 2, 'F$checkRow+F${checkRow + 1}', style: boldMoney);
-    text(1, checkRow + 4, '口座+手持ち現金の合計', style: bold);
-    formula(2, checkRow + 4, 'F${checkRow + 2}', style: boldMoney);
-    text(3, checkRow + 4, '（残高計算額との差）', style: small);
-    formula(2, checkRow + 5, 'C${checkRow + 4}-E$subtotalRow', style: boldMoney);
+    // 残高の確認（表示行258〜）
+    const check = atmLast + 4; // 258
+    cellAt(3, check, '口座', style: bold);
+    numAt(5, check, 0, style: boldMoney);
+    cellAt(3, check + 1, '手持ち現金', style: bold);
+    numAt(5, check + 1, 0, style: boldMoney);
+    cellAt(4, check + 2, '合計', style: bold);
+    fx(5, check + 2, 'F$check+F${check + 1}', style: boldMoney);
+    cellAt(1, check + 4, '口座+手持ち現金の合計', style: bold);
+    fx(2, check + 4, 'F${check + 2}', style: boldMoney);
+    cellAt(3, check + 4, '（残高計算額との差）', style: small);
+    fx(2, check + 5, 'C${check + 4}-E$subtotal', style: boldMoney);
 
     // 署名欄
-    text(5, checkRow + 8, '報告者', style: bold);
-    text(5, checkRow + 9, '監査', style: bold);
+    cellAt(5, check + 8, '報告者', style: bold);
+    cellAt(5, check + 9, '監査', style: bold);
 
     final encoded = excel.encode();
     if (encoded == null) {
