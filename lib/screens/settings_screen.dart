@@ -33,7 +33,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _load() async {
-    final url = await AppSettings.getSyncEndpoint();
+    final custom = await AppSettings.isUsingCustomEndpoint();
+    final url = custom ? await AppSettings.getSyncEndpoint() : '';
     final title = await AppSettings.getMainTitle();
     final presets = await AppSettings.getSyncPresets();
     if (!mounted) return;
@@ -129,13 +130,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _snack('同期先URLは https:// で始まる必要があります。');
       return;
     }
+    if (url.isNotEmpty && !AppSettings.isUsableEndpoint(url)) {
+      _snack('このURLは同期先に使えません。Google Apps Script のウェブアプリURL（/exec で終わるURL）を入力してください。');
+      return;
+    }
     final changed = await AppSettings.setSyncEndpoint(url);
     if (changed) {
       // 旧同期先の画像URLは新しい同期先では無効なので消し、画像を送り直す
       await ReceiptStore.clearImageUrls();
     }
     await AppSettings.setMainTitle(_titleCtrl.text);
-    if (url.isEmpty) {
+    if (!await CloudSyncService.isConfigured()) {
       _snack('保存しました。');
       return;
     }
@@ -205,7 +210,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    '共有するデータの保存先URLを入力します。Google Apps Script のウェブアプリURL（https://…/exec）など、任意のHTTPSエンドポイントに設定できます。全員が同じURLを入力すると同じデータを共有します。',
+                    '関桜会のアプリには同期先が最初から設定されています。入力は不要です。別の同期先を使う場合のみ、ここに Google Apps Script のウェブアプリURL（/exec で終わるURL）を入力してください。空欄のままなら、初期設定の同期先を使います。',
                     style: TextStyle(fontSize: 12),
                   ),
                   const SizedBox(height: 8),

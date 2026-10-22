@@ -27,10 +27,47 @@ class AppSettings {
   static const _presetsKey = 'sync_endpoint_presets';
   static const _mainTitleKey = 'report_main_title';
 
-  /// 同期先URL（未設定なら空文字）
+  /// 初期設定の同期先URL（関桜会の Apps Script ウェブアプリURL / 末尾 /exec）。
+  /// アプリに組み込むことで、会員は URL を入力しなくても同期できる。
+  /// 空の間は同期は無効（設定画面で入力すれば使える）。
+  static const builtInSyncEndpoint = '';
+
+  /// 共有リンク（ファイルの共有URLなど）は同期先として使えないため除外する
+  static bool isUsableEndpoint(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null || !uri.isScheme('https') || uri.host.isEmpty) {
+      return false;
+    }
+    final host = uri.host.toLowerCase();
+    const blockedSuffixes = [
+      'onedrive.live.com',
+      'live.com',
+      '1drv.ms',
+      'sharepoint.com',
+      'drive.google.com',
+      'docs.google.com',
+    ];
+    for (final s in blockedSuffixes) {
+      if (host == s || host.endsWith('.$s')) return false;
+    }
+    return true;
+  }
+
+  /// 同期先URL（利用中の値。保存値が無効・未設定なら初期設定の値）
   static Future<String> getSyncEndpoint() async {
     final prefs = await SharedPreferences.getInstance();
-    return (prefs.getString(_endpointKey) ?? '').trim();
+    final saved = (prefs.getString(_endpointKey) ?? '').trim();
+    if (saved.isEmpty || !isUsableEndpoint(saved)) {
+      return builtInSyncEndpoint;
+    }
+    return saved;
+  }
+
+  /// 保存されている値が初期設定と違うか（設定画面の表示用）
+  static Future<bool> isUsingCustomEndpoint() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = (prefs.getString(_endpointKey) ?? '').trim();
+    return saved.isNotEmpty && saved != builtInSyncEndpoint;
   }
 
   /// 同期先を保存する。URLが変わった場合は同期の基準（受信カーソル・送信済み時刻）を
