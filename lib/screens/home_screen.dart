@@ -22,6 +22,7 @@ import '../widgets/quick_entry_panel.dart';
 import '../services/event_report.dart';
 import '../services/receipt_merge.dart';
 import 'bank_ledger_screen.dart';
+import '../services/update_checker.dart';
 
 /// ホーム：収支一覧（残高サマリー付き）
 class HomeScreen extends StatefulWidget {
@@ -37,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<Receipt> _entries = [];
   bool _syncing = false;
   DateTime? _lastAutoSync;
+  bool _updateChecked = false;
   List<Member> _members = [];
   bool _loading = true;
   _Filter _filter = _Filter.all;
@@ -51,6 +53,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _reload();
     _autoSync();
+    _checkUpdate();
+  }
+
+  /// 起動時に1回だけ、新しいバージョンがあれば案内する
+  Future<void> _checkUpdate() async {
+    if (_updateChecked) return;
+    _updateChecked = true;
+    final info = await UpdateChecker.check();
+    if (info == null || !mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('新しいバージョンがあります'),
+        content: Text(
+          '最新版 ${info.latestVersion}（いまのバージョン ${info.currentVersion}）が公開されています。\n'
+          'ダウンロードページを開いて更新してください。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('あとで'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              UpdateChecker.openDownloadPage();
+            },
+            child: const Text('ダウンロードページを開く'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
