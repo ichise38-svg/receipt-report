@@ -30,7 +30,8 @@ class AppSettings {
   /// 初期設定の同期先URL（関桜会の Apps Script ウェブアプリURL / 末尾 /exec）。
   /// アプリに組み込むことで、会員は URL を入力しなくても同期できる。
   /// 空の間は同期は無効（設定画面で入力すれば使える）。
-  static const builtInSyncEndpoint = '';
+  static const builtInSyncEndpoint =
+      'https://script.google.com/macros/s/AKfycbxHdxRAf41GBbShw2cAmctX-frRHB6Zivd_8_G3rR3tbIx2CPouU6_ccaDbJNXRgo_ASA/exec';
 
   /// 共有リンク（ファイルの共有URLなど）は同期先として使えないため除外する
   static bool isUsableEndpoint(String url) {
