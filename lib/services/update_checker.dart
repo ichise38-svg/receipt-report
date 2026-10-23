@@ -23,7 +23,7 @@ class UpdateInfo {
 /// 失敗（オフライン・未設定など）は黙って null を返し、アプリの動作は止めない。
 class UpdateChecker {
   /// このアプリのバージョン（pubspec.yaml の version と必ず合わせる）
-  static const currentVersion = '1.0.0';
+  static const currentVersion = '1.0.1';
 
   static const _releaseApi =
       'https://api.github.com/repos/ichise38-svg/receipt-report/releases/tags/android-latest';

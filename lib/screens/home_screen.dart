@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -58,7 +59,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// 起動時に1回だけ、新しいバージョンがあれば案内する
   Future<void> _checkUpdate() async {
-    if (_updateChecked) return;
+    // 更新通知はAndroidアプリのみ（iPhoneのWeb版はAPKを案内しても意味がない）
+    if (kIsWeb || _updateChecked) return;
     _updateChecked = true;
     final info = await UpdateChecker.check();
     if (info == null || !mounted) return;
