@@ -23,8 +23,12 @@ class _ReportScreenState extends State<ReportScreen> {
   late DateTime _from;
   late DateTime _to;
   final _titleCtrl = TextEditingController(text: '経費精算');
-  final _carryCashCtrl = TextEditingController(text: '146353');
-  final _carryBankCtrl = TextEditingController(text: '308650');
+  final _carryCashCtrl = TextEditingController(
+    text: '${AppSettings.defaultCarryCash}',
+  );
+  final _carryBankCtrl = TextEditingController(
+    text: '${AppSettings.defaultCarryBank}',
+  );
   final _currency = NumberFormat('#,##0', 'ja_JP');
   final _dateFmt = DateFormat('yyyy/MM/dd');
   final Set<String> _excludedIds = {};
@@ -41,6 +45,12 @@ class _ReportScreenState extends State<ReportScreen> {
     });
     AppSettings.getMainTitle().then((t) {
       if (mounted) setState(() => _mainTitle = t);
+    });
+    AppSettings.getCarry().then((c) {
+      if (!mounted) return;
+      _carryCashCtrl.text = '${c.cash}';
+      _carryBankCtrl.text = '${c.bank}';
+      setState(() {});
     });
     // 年間報告は 1/1〜12/31 で完結させる（既定は今年度）
     final year = DateTime.now().year;
@@ -90,6 +100,15 @@ class _ReportScreenState extends State<ReportScreen> {
 
   int _parseYen(TextEditingController c) =>
       int.tryParse(c.text.replaceAll(RegExp(r'[,，\s円]'), '')) ?? 0;
+
+  /// 繰越金の入力を端末に保存し、他の画面（Excelビューワー・口座出納）にも反映する
+  void _saveCarry() {
+    setState(() {});
+    AppSettings.setCarry(
+      cash: _parseYen(_carryCashCtrl),
+      bank: _parseYen(_carryBankCtrl),
+    );
+  }
 
   List<String> get _rosterNames =>
       _includeRoster ? _members.map((m) => m.name).toList() : const [];
@@ -178,7 +197,7 @@ class _ReportScreenState extends State<ReportScreen> {
                             suffixText: '円',
                             border: OutlineInputBorder(),
                           ),
-                          onChanged: (_) => setState(() {}),
+                          onChanged: (_) => _saveCarry(),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -191,7 +210,7 @@ class _ReportScreenState extends State<ReportScreen> {
                             suffixText: '円',
                             border: OutlineInputBorder(),
                           ),
-                          onChanged: (_) => setState(() {}),
+                          onChanged: (_) => _saveCarry(),
                         ),
                       ),
                     ],

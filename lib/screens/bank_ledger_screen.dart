@@ -3,6 +3,7 @@ import 'package:intl/intl.dart' hide TextDirection;
 
 import '../models/bank_entry.dart';
 import '../models/receipt.dart';
+import '../services/app_settings.dart';
 import '../services/bank_reconcile.dart';
 import '../services/bank_store.dart';
 import '../services/receipt_store.dart';
@@ -11,15 +12,7 @@ import '../services/receipt_store.dart';
 ///
 /// 手入力で修正した口座の出納を入力し、デビットカードの支出と突き合わせます。
 class BankLedgerScreen extends StatefulWidget {
-  /// 前年繰越（報告書画面の既定値と同じ）。報告書の入力値とは別に持つ
-  final int carryCash;
-  final int carryBank;
-
-  const BankLedgerScreen({
-    super.key,
-    this.carryCash = 146353,
-    this.carryBank = 308650,
-  });
+  const BankLedgerScreen({super.key});
 
   @override
   State<BankLedgerScreen> createState() => _BankLedgerScreenState();
@@ -31,6 +24,8 @@ class _BankLedgerScreenState extends State<BankLedgerScreen>
   List<BankEntry> _bank = [];
   List<Receipt> _receipts = [];
   bool _loading = true;
+  int _carryCash = AppSettings.defaultCarryCash;
+  int _carryBank = AppSettings.defaultCarryBank;
 
   final _dateFmt = DateFormat('yyyy/MM/dd');
   final _numFmt = NumberFormat('#,##0', 'ja_JP');
@@ -52,10 +47,13 @@ class _BankLedgerScreenState extends State<BankLedgerScreen>
   Future<void> _reload() async {
     final bank = await BankStore.loadAll();
     final receipts = await ReceiptStore.loadAll();
+    final carry = await AppSettings.getCarry();
     if (!mounted) return;
     setState(() {
       _bank = bank;
       _receipts = receipts;
+      _carryCash = carry.cash;
+      _carryBank = carry.bank;
       _loading = false;
     });
   }
@@ -161,8 +159,8 @@ class _BankLedgerScreenState extends State<BankLedgerScreen>
 
   Widget _buildReconcile() {
     final bal = BankReconcile.balances(
-      carryCash: widget.carryCash,
-      carryBank: widget.carryBank,
+      carryCash: _carryCash,
+      carryBank: _carryBank,
       bankEntries: _bank,
       receipts: _receipts,
     );
@@ -196,7 +194,7 @@ class _BankLedgerScreenState extends State<BankLedgerScreen>
                 _balanceRow('口座＋手持ち現金', bal.bank + bal.cashOnHand, bold: true),
                 const SizedBox(height: 4),
                 Text(
-                  '繰越金は報告書の入力値（口座等・現金）を使用しています。',
+                  '繰越金は報告書・Excelビューワーで入力した値（口座等・現金）を使用しています。',
                   style: TextStyle(
                     fontSize: 11,
                     color: scheme.onSurfaceVariant,

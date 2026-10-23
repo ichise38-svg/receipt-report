@@ -119,4 +119,25 @@ class AppSettings {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_mainTitleKey, title.trim());
   }
+
+  /// 前年度繰越金（現金・口座等）。報告書・Excelビューワー・口座出納で共有する。
+  /// 未保存のときは既定値（前年度の確定額）を返す。
+  static const defaultCarryCash = 146353;
+  static const defaultCarryBank = 308650;
+  static const _carryCashKey = 'carry_cash_v1';
+  static const _carryBankKey = 'carry_bank_v1';
+
+  static Future<({int cash, int bank})> getCarry() async {
+    final prefs = await SharedPreferences.getInstance();
+    return (
+      cash: prefs.getInt(_carryCashKey) ?? defaultCarryCash,
+      bank: prefs.getInt(_carryBankKey) ?? defaultCarryBank,
+    );
+  }
+
+  static Future<void> setCarry({required int cash, required int bank}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_carryCashKey, cash);
+    await prefs.setInt(_carryBankKey, bank);
+  }
 }

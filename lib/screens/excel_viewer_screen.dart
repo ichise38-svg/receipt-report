@@ -38,8 +38,8 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
   static const _rowHeaderWidth = 44.0;
 
   final _currency = NumberFormat('#,##0', 'ja_JP');
-  final _carryCashCtrl = TextEditingController(text: '146353');
-  final _carryBankCtrl = TextEditingController(text: '308650');
+  final _carryCashCtrl = TextEditingController(text: '${AppSettings.defaultCarryCash}');
+  final _carryBankCtrl = TextEditingController(text: '${AppSettings.defaultCarryBank}');
 
   bool _loading = true;
   List<LayoutRow> _rows = [];
@@ -86,10 +86,13 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
     final entries = await ReceiptStore.loadAll();
     final members = await MemberStore.loadAll();
     final title = await AppSettings.getMainTitle();
+    final carry = await AppSettings.getCarry();
     if (!mounted) return;
     final names = EventReport.namesOf(entries);
     setState(() {
       _mainTitle = title;
+      _carryCashCtrl.text = '${carry.cash}';
+      _carryBankCtrl.text = '${carry.bank}';
       _participants = members.length;
       _loading = false;
       _entries = entries;
@@ -154,6 +157,15 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
 
   int _parseYen(TextEditingController c) =>
       int.tryParse(c.text.replaceAll(RegExp(r'[,，\s円]'), '')) ?? 0;
+
+  /// 繰越金の入力を端末に保存（報告書・口座出納と共有）してから再計算する
+  void _saveCarryAndRebuild() {
+    AppSettings.setCarry(
+      cash: _parseYen(_carryCashCtrl),
+      bank: _parseYen(_carryBankCtrl),
+    );
+    _rebuild(_entries);
+  }
 
   LayoutRow? get _selected {
     final r = _selectedRow;
@@ -313,7 +325,7 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
                       isDense: true,
                       border: OutlineInputBorder(),
                     ),
-                    onChanged: (_) => _rebuild(_entries),
+                    onChanged: (_) => _saveCarryAndRebuild(),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -326,7 +338,7 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
                       isDense: true,
                       border: OutlineInputBorder(),
                     ),
-                    onChanged: (_) => _rebuild(_entries),
+                    onChanged: (_) => _saveCarryAndRebuild(),
                   ),
                 ),
               ],
