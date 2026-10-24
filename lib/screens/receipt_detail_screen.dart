@@ -112,7 +112,16 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
                   child: Container(
                     color: Colors.grey.shade200,
                     constraints: const BoxConstraints(minHeight: 200),
-                    child: Image.file(File(r.imagePath), fit: BoxFit.contain),
+                    // 長いレシートは2本指で拡大・移動して読める
+                    child: InteractiveViewer(
+                      minScale: 1,
+                      maxScale: 5,
+                      child: Image.file(
+                        File(r.imagePath),
+                        fit: BoxFit.fitWidth,
+                        width: double.infinity,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),

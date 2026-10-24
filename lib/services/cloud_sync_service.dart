@@ -29,6 +29,9 @@ class CloudSyncService {
 
   /// 画像は送信前に縮小して転送量・保存コストを抑える
   static const int maxImageSide = 1200;
+
+  /// 縦長（長いレシート）の画像は文字が読めるよう、長辺の上限を広げる
+  static const int maxTallImageSide = 2400;
   static const int jpegQuality = 80;
 
   /// 設定画面で入力された同期先URL（Apps Script のウェブアプリURL など）
@@ -267,12 +270,14 @@ class CloudSyncService {
       return null;
     }
     if (decoded == null) return null;
+    final isTall = decoded.height > decoded.width * 1.5;
+    final limit = isTall ? maxTallImageSide : maxImageSide;
     final resized = decoded.width > decoded.height
-        ? (decoded.width > maxImageSide
-              ? img.copyResize(decoded, width: maxImageSide)
+        ? (decoded.width > limit
+              ? img.copyResize(decoded, width: limit)
               : decoded)
-        : (decoded.height > maxImageSide
-              ? img.copyResize(decoded, height: maxImageSide)
+        : (decoded.height > limit
+              ? img.copyResize(decoded, height: limit)
               : decoded);
     final out = img.encodeJpg(resized, quality: jpegQuality);
     return base64Encode(out);

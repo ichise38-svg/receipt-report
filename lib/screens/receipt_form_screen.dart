@@ -99,9 +99,11 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
+      // 長いレシートも切れないよう、高さの上限も広めに取る（縦横比は保つ）
       final picked = await ImagePicker().pickImage(
         source: source,
-        maxWidth: 2000,
+        maxWidth: 1600,
+        maxHeight: 6000,
         imageQuality: 90,
       );
       if (picked == null) return;
@@ -112,6 +114,29 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
       if (!mounted) return;
       _showMessage('画像の取得に失敗しました。カメラ・写真の許可を確認してください。');
     }
+  }
+
+  /// 長いレシートを全画面で読む（拡大・移動できる）
+  void _showFullImage() {
+    final path = _imagePath;
+    if (path == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            title: const Text('レシート'),
+          ),
+          body: InteractiveViewer(
+            minScale: 1,
+            maxScale: 5,
+            child: Center(child: Image.file(File(path), fit: BoxFit.contain)),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _pickDate() async {
@@ -428,7 +453,14 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
             width: double.infinity,
             color: Colors.grey.shade200,
             child: hasImage
-                ? Image.file(File(_imagePath!), fit: BoxFit.contain)
+                ? GestureDetector(
+                    onTap: _showFullImage,
+                    child: InteractiveViewer(
+                      minScale: 1,
+                      maxScale: 5,
+                      child: Image.file(File(_imagePath!), fit: BoxFit.contain),
+                    ),
+                  )
                 : const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,

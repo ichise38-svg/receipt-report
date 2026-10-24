@@ -37,14 +37,23 @@ void main() {
     expect(base64Decode(b64).length, lessThan(src.length));
   });
 
-  test('縦長画像は高さ基準で縮小される', () {
-    final tall = img.Image(width: 800, height: 2400);
+  test('縦長画像（長いレシート）は高さ2400pxまで残り、文字が読める', () {
+    final tall = img.Image(width: 800, height: 3000);
     final src = Uint8List.fromList(img.encodePng(tall));
     final out = img.decodeJpg(
       base64Decode(CloudSyncService.compressBytesForTest(src)!),
     );
-    expect(out!.height, 1200);
-    expect(out.width, 400);
+    expect(out!.height, 2400);
+    expect(out.width, 640);
+  });
+
+  test('ほぼ正方形の画像は従来どおり長辺1200pxに縮小される', () {
+    final sq = img.Image(width: 2000, height: 1800);
+    final src = Uint8List.fromList(img.encodePng(sq));
+    final out = img.decodeJpg(
+      base64Decode(CloudSyncService.compressBytesForTest(src)!),
+    );
+    expect(out!.width, 1200);
   });
 
   test('小さい画像は拡大せずそのまま', () {
