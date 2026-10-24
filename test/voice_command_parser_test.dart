@@ -81,4 +81,65 @@ void main() {
       isFalse,
     );
   });
+
+  group('自然な言い回し', () {
+    test('「〜かかった」は支出、電車は交通費', () {
+      final c = VoiceCommandParser.parse('昨日電車で300円かかった', now: now);
+      expect(c.action, VoiceAction.add);
+      expect(c.receipt!.kind, EntryKind.expense);
+      expect(c.receipt!.category, '交通費');
+      expect(c.receipt!.amount, 300);
+      expect(c.receipt!.date, DateTime(2026, 5, 9));
+    });
+
+    test('「〜入った」は収入、「5万」を金額に読む', () {
+      final c = VoiceCommandParser.parse('補助金が5万円入った', now: now);
+      expect(c.receipt!.kind, EntryKind.income);
+      expect(c.receipt!.category, '補助金');
+      expect(c.receipt!.amount, 50000);
+    });
+
+    test('「2千円」「3千5百円」を読む', () {
+      expect(
+        VoiceCommandParser.parse('会費 2千円', now: now).receipt!.amount,
+        2000,
+      );
+      expect(
+        VoiceCommandParser.parse('食費 3千5百円', now: now).receipt!.amount,
+        3500,
+      );
+    });
+
+    test('「直接払った」は修正と誤判定しない', () {
+      final c = VoiceCommandParser.parse('直接払った 食費 800円', now: now);
+      expect(c.action, VoiceAction.add);
+      expect(c.receipt!.amount, 800);
+    });
+
+    test('店名の中の「は」「の」を壊さない', () {
+      final c = VoiceCommandParser.parse('はなまるうどんで食費 700円', now: now);
+      expect(c.receipt!.storeName.contains('はなまるうどん'), isTrue);
+    });
+
+    test('修正：「1200円を1500円に変更」は新旧の金額を取り違えない', () {
+      final c = VoiceCommandParser.parse('1200円を1500円に変更', now: now);
+      expect(c.action, VoiceAction.edit);
+      expect(c.newAmount, 1500);
+      expect(c.target!.amount, 1200);
+    });
+
+    test('修正：「昨日の食費を2千円に直して」', () {
+      final c = VoiceCommandParser.parse('昨日の食費を2千円に直して', now: now);
+      expect(c.action, VoiceAction.edit);
+      expect(c.newAmount, 2000);
+      expect(c.target!.date, DateTime(2026, 5, 9));
+      expect(c.target!.category, '食費');
+    });
+
+    test('削除：「昨日の交通費を消して」', () {
+      final c = VoiceCommandParser.parse('昨日の交通費を消して', now: now);
+      expect(c.action, VoiceAction.delete);
+      expect(c.target!.category, '交通費');
+    });
+  });
 }
