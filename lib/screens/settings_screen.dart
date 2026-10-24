@@ -132,9 +132,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           : await UpdateChecker.check();
       if (!mounted) return;
       if (info == null) {
+        await AppSettings.saveLatestVersion(UpdateChecker.currentVersion);
         _snack('最新版です（いまのバージョン ${UpdateChecker.currentVersion}）。');
         return;
       }
+      await AppSettings.saveLatestVersion(info.latestVersion);
       _snack('新しい版 ${info.latestVersion} があります。');
       if (kIsWeb) {
         WebUpdateChecker.reloadWithFreshFiles(Uri.base);

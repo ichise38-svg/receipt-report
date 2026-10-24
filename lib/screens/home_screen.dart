@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/member.dart';
+import '../services/app_settings.dart';
 import '../services/cloud_sync_service.dart';
 import '../models/receipt.dart';
 import '../services/ledger_summary.dart';
@@ -43,6 +44,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   DateTime? _lastAutoSync;
   bool _checkingUpdate = false;
   DateTime? _lastUpdateCheck;
+  bool _updateBadge = false; // 新しい版がある間、設定アイコンに点を出す
   List<Member> _members = [];
   bool _loading = true;
   _Filter _filter = _Filter.all;
@@ -60,6 +62,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _reload();
     _autoSync();
+    _refreshUpdateBadge();
     _checkUpdate();
     _pollSync = Timer.periodic(const Duration(minutes: 2), (_) => _autoSync());
   }
@@ -81,16 +84,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           appBase: Uri.base,
           currentVersion: UpdateChecker.currentVersion,
         );
-        if (info == null || !mounted) return;
+        if (info == null) return;
+        await AppSettings.saveLatestVersion(info.latestVersion);
+        if (!mounted) return;
+        await _refreshUpdateBadge();
+        if (!mounted) return;
         await _showUpdateDialog(info, web: true);
       } else {
         final info = await UpdateChecker.check();
-        if (info == null || !mounted) return;
+        if (info == null) return;
+        await AppSettings.saveLatestVersion(info.latestVersion);
+        if (!mounted) return;
+        await _refreshUpdateBadge();
+        if (!mounted) return;
         await _showUpdateDialog(info, web: false);
       }
     } finally {
       _checkingUpdate = false;
     }
+  }
+
+  /// 設定アイコンに出す「新しい版がある」点の表示を読み直す
+  Future<void> _refreshUpdateBadge() async {
+    final hasNew = await AppSettings.hasNewerVersion(
+      UpdateChecker.currentVersion,
+    );
+    if (!mounted || hasNew == _updateBadge) return;
+    setState(() => _updateBadge = hasNew);
   }
 
   Future<void> _showUpdateDialog(UpdateInfo info, {required bool web}) async {
@@ -319,8 +339,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onPressed: _openMembers,
           ),
           IconButton(
-            tooltip: '設定（同期先・報告書タイトル）',
-            icon: const Icon(Icons.settings),
+            tooltip: _updateBadge ? '設定（新しい版があります）' : '設定（同期先・報告書タイトル）',
+            icon: Badge(
+              isLabelVisible: _updateBadge,
+              smallSize: 8,
+              child: const Icon(Icons.settings),
+            ),
             onPressed: _openSettings,
           ),
           IconButton(

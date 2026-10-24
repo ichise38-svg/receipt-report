@@ -108,6 +108,41 @@ class AppSettings {
     );
   }
 
+  static const _latestSeenKey = 'update_latest_seen';
+
+  /// 公開されている最新版を記録する（設定アイコンのバッジ表示に使う）
+  static Future<void> saveLatestVersion(String version) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_latestSeenKey, version);
+  }
+
+  /// 記録された最新版が、いま使っている版より新しいか（新しい版があるか）
+  static Future<bool> hasNewerVersion(String currentVersion) async {
+    final prefs = await SharedPreferences.getInstance();
+    final latest = (prefs.getString(_latestSeenKey) ?? '').trim();
+    if (latest.isEmpty) return false;
+    return compareVersionStrings(latest, currentVersion) > 0;
+  }
+
+  /// 版番号の比較（1.0.3 と 1.0.2 など）。a > b なら正
+  static int compareVersionStrings(String a, String b) {
+    List<int> parts(String v) => v
+        .split('+')
+        .first
+        .split('.')
+        .map((e) => int.tryParse(e.trim()) ?? 0)
+        .toList();
+    final x = parts(a);
+    final y = parts(b);
+    final n = x.length > y.length ? x.length : y.length;
+    for (var i = 0; i < n; i++) {
+      final p = i < x.length ? x[i] : 0;
+      final q = i < y.length ? y[i] : 0;
+      if (p != q) return p.compareTo(q);
+    }
+    return 0;
+  }
+
   /// 報告書の主タイトル（左上に表示される。年間・イベント別の両方）
   static Future<String> getMainTitle() async {
     final prefs = await SharedPreferences.getInstance();
