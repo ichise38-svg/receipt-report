@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../services/app_settings.dart';
 import '../services/ledger_file_service.dart';
 import '../services/receipt_store.dart';
 
@@ -16,6 +17,7 @@ class LedgerFileScreen extends StatefulWidget {
 
 class _LedgerFileScreenState extends State<LedgerFileScreen> {
   bool _busy = false;
+  bool _updateCarry = true;
   final _currency = NumberFormat('#,##0', 'ja_JP');
 
   void _toast(String message) {
@@ -71,13 +73,22 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
     if (mounted) setState(() => _busy = false);
     if (!mounted) return;
 
+    _updateCarry = preview.hasCarry;
     final ok = await _confirm(preview);
     if (ok != true) return;
 
     setState(() => _busy = true);
     try {
       await ReceiptStore.addAll(preview.toAdd);
-      _toast('${preview.toAdd.length}件を取り込みました。');
+      var carryMsg = '';
+      if (preview.hasCarry && _updateCarry) {
+        await AppSettings.setCarry(
+          cash: preview.carryCash!,
+          bank: preview.carryBank!,
+        );
+        carryMsg = '（繰越金も更新しました）';
+      }
+      _toast('${preview.toAdd.length}件を取り込みました。$carryMsg');
       if (mounted) Navigator.of(context).pop(true);
     } catch (_) {
       _toast('保存できませんでした。');
@@ -87,61 +98,93 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
   }
 
   Future<bool?> _confirm(LedgerImportPreview p) {
-    final nothing = p.toAdd.isEmpty;
+    final nothing = p.toAdd.isEmpty && !p.hasCarry;
     return showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('取り込み内容の確認'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('読み取り元のシート: ${p.sheetName}'),
-              const SizedBox(height: 8),
-              Text('取り込む件数: ${p.toAdd.length}件'),
-              Text(
-                '　収入 ${p.incomeCount}件（¥${_currency.format(p.incomeTotal)}）',
-              ),
-              Text(
-                '　支出 ${p.expenseCount}件（¥${_currency.format(p.expenseTotal)}）',
-              ),
-              const SizedBox(height: 8),
-              Text('重複のため無視: ${p.duplicateCount}件'),
-              Text('繰越金行（報告書画面で入力）: ${p.carrySkipped}件'),
-              if (p.needsCheckCount > 0)
-                Text(
-                  '日付を推定: ${p.needsCheckCount}件（備考に元の表記を残します。後で確認してください）',
-                  style: TextStyle(color: Colors.orange.shade800),
-                ),
-              if (p.skippedReasons.isNotEmpty) ...[
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: const Text('取り込み内容の確認'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (p.hasCarry) ...[
+                  Text(
+                    '前年度繰越金（Excelから読み取り）',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Text('　現金: ¥${_currency.format(p.carryCash)}'),
+                  Text('　口座等: ¥${_currency.format(p.carryBank)}'),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text('この繰越金で端末の繰越金を更新する'),
+                    value: _updateCarry,
+                    onChanged: (v) =>
+                        setDialog(() => _updateCarry = v ?? false),
+                  ),
+                  const SizedBox(height: 8),
+                ] else ...[
+                  Text(
+                    '繰越金は更新しません（${p.carryReason ?? '読み取れませんでした'}）。'
+                    '報告書画面で手入力してください。',
+                    style: TextStyle(color: Colors.red.shade700),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                if (p.yearMismatchCount > 0)
+                  Text(
+                    '年がExcelの表の年と違う明細: ${p.yearMismatchCount}件（備考に「年要確認」を付けて取り込みます）',
+                    style: TextStyle(color: Colors.orange.shade800),
+                  ),
+                Text('読み取り元のシート: ${p.sheetName}'),
                 const SizedBox(height: 8),
+                Text('取り込む件数: ${p.toAdd.length}件'),
                 Text(
-                  '読み取れなかった行: ${p.skippedReasons.length}件',
-                  style: TextStyle(color: Colors.red.shade700),
+                  '　収入 ${p.incomeCount}件（¥${_currency.format(p.incomeTotal)}）',
                 ),
-                for (final s in p.skippedReasons.take(5)) Text('・$s'),
-                if (p.skippedReasons.length > 5)
-                  Text('ほか ${p.skippedReasons.length - 5}件'),
+                Text(
+                  '　支出 ${p.expenseCount}件（¥${_currency.format(p.expenseTotal)}）',
+                ),
+                const SizedBox(height: 8),
+                Text('重複のため無視: ${p.duplicateCount}件'),
+                Text('繰越金行（報告書画面で入力）: ${p.carrySkipped}件'),
+                if (p.needsCheckCount > 0)
+                  Text(
+                    '日付を推定: ${p.needsCheckCount}件（備考に元の表記を残します。後で確認してください）',
+                    style: TextStyle(color: Colors.orange.shade800),
+                  ),
+                if (p.skippedReasons.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '読み取れなかった行: ${p.skippedReasons.length}件',
+                    style: TextStyle(color: Colors.red.shade700),
+                  ),
+                  for (final s in p.skippedReasons.take(5)) Text('・$s'),
+                  if (p.skippedReasons.length > 5)
+                    Text('ほか ${p.skippedReasons.length - 5}件'),
+                ],
+                const SizedBox(height: 8),
+                const Text(
+                  '行事別シートは年間集計と同じ金額を含むため取り込みません。',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
               ],
-              const SizedBox(height: 8),
-              const Text(
-                '行事別シートは年間集計と同じ金額を含むため取り込みません。',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('キャンセル'),
+            ),
+            FilledButton(
+              onPressed: nothing ? null : () => Navigator.pop(ctx, true),
+              child: const Text('取り込む'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('キャンセル'),
-          ),
-          FilledButton(
-            onPressed: nothing ? null : () => Navigator.pop(ctx, true),
-            child: const Text('取り込む'),
-          ),
-        ],
       ),
     );
   }

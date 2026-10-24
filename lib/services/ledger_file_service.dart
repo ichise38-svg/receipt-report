@@ -25,6 +25,18 @@ class LedgerImportPreview {
   /// 読み取れなかった行の理由
   final List<String> skippedReasons;
 
+  /// 読み取った前年度繰越金（現金）。読めなければ null
+  final int? carryCash;
+
+  /// 読み取った前年度繰越金（口座等）。読めなければ null
+  final int? carryBank;
+
+  /// 繰越金を読めなかった理由（読めた場合は null）
+  final String? carryReason;
+
+  /// 年が対象年と違う日付の明細件数（取り込みはするが確認が必要）
+  final int yearMismatchCount;
+
   const LedgerImportPreview({
     required this.sheetName,
     required this.toAdd,
@@ -32,7 +44,13 @@ class LedgerImportPreview {
     required this.needsCheckCount,
     required this.carrySkipped,
     required this.skippedReasons,
+    this.carryCash,
+    this.carryBank,
+    this.carryReason,
+    this.yearMismatchCount = 0,
   });
+
+  bool get hasCarry => carryCash != null && carryBank != null;
 
   int get incomeCount => toAdd.where((r) => r.isIncome).length;
   int get expenseCount => toAdd.length - incomeCount;
@@ -82,6 +100,7 @@ class LedgerFileService {
     final rows = found.rows;
     final cols = found.cols;
     final yearHint = _yearHint(rows, cols.headerRow);
+    final carry = _readCarry(rows, cols);
     final counts = <String, int>{};
     for (final r in existing) {
       if (r.deleted) continue;
@@ -93,6 +112,7 @@ class LedgerFileService {
     var duplicates = 0;
     var needsCheck = 0;
     var carrySkipped = 0;
+    var yearMismatch = 0;
     final skipped = <String>[];
 
     for (var i = cols.headerRow + 1; i < rows.length; i++) {
@@ -118,8 +138,11 @@ class LedgerFileService {
       }
       final name = summary.isEmpty ? '（摘要なし）' : summary;
       final note = _text(row, cols.note);
+      final yearOff = parsed.exact && parsed.date.year != yearHint;
+      if (yearOff) yearMismatch++;
       final memo = [
         if (!parsed.exact) '日付要確認（元の表記: ${parsed.raw}）',
+        if (yearOff) '年要確認（Excelの年: ${parsed.date.year}年）',
         if (note.isNotEmpty) note,
       ].join('／');
 
@@ -158,7 +181,71 @@ class LedgerFileService {
       needsCheckCount: needsCheck,
       carrySkipped: carrySkipped,
       skippedReasons: skipped,
+      carryCash: carry.cash,
+      carryBank: carry.bank,
+      carryReason: carry.reason,
+      yearMismatchCount: yearMismatch,
     );
+  }
+
+  /// 繰越金（前年度）を読み取る。
+  ///
+  /// 「前年度繰越金（現金）」「前年度繰越金（口座等）」の行の収入欄（C列）を読む。
+  /// 支出欄（D列）や E・F 列（計算式・残高）は使わない。
+  /// 両方とも数値として読めた場合のみ成功とし、片方でも欠ければ理由を返す。
+  static ({int? cash, int? bank, String? reason}) _readCarry(
+    List<List<Data?>> rows,
+    _Columns cols,
+  ) {
+    int? cash;
+    int? bank;
+    var cashText = '';
+    var bankText = '';
+    for (final row in rows) {
+      final summary = _text(row, cols.summary);
+      if (summary.contains('繰越')) {
+        final v = row.length > cols.income ? row[cols.income]?.value : null;
+        if (summary.contains('現金')) {
+          cash = _numberOrNull(v);
+          cashText = _cellText(
+            row.length > cols.income ? row[cols.income] : null,
+          );
+        } else if (summary.contains('口座')) {
+          bank = _numberOrNull(v);
+          bankText = _cellText(
+            row.length > cols.income ? row[cols.income] : null,
+          );
+        }
+      }
+    }
+    if (cash != null && bank != null) {
+      return (cash: cash, bank: bank, reason: null);
+    }
+    final missing = <String>[
+      if (cash == null)
+        cashText.isEmpty ? '現金の繰越（収入欄）が空欄' : '現金の繰越（収入欄「$cashText」）を数値として読めません',
+      if (bank == null)
+        bankText.isEmpty
+            ? '口座等の繰越（収入欄）が空欄'
+            : '口座等の繰越（収入欄「$bankText」）を数値として読めません',
+    ];
+    return (
+      cash: null,
+      bank: null,
+      reason: missing.isEmpty
+          ? '繰越金の行が見つかりません（「前年度繰越金（現金）」「前年度繰越金（口座等）」）'
+          : missing.join('／'),
+    );
+  }
+
+  static int? _numberOrNull(CellValue? v) {
+    if (v is IntCellValue) return v.value;
+    if (v is DoubleCellValue) return v.value.round();
+    if (v is TextCellValue) {
+      final cleaned = v.toString().replaceAll(RegExp(r'[,円\s\u3000]'), '');
+      return int.tryParse(cleaned);
+    }
+    return null;
   }
 
   /// 年間報告書の様式（サンプル「2025年集計」と同じ構成）の空のExcelを作る
