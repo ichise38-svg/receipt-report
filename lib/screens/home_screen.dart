@@ -7,6 +7,8 @@ import 'package:intl/intl.dart';
 
 import '../models/member.dart';
 import '../services/app_settings.dart';
+import '../services/bank_reconcile.dart';
+import '../services/bank_store.dart';
 import '../services/cloud_sync_service.dart';
 import '../models/receipt.dart';
 import '../services/ledger_summary.dart';
@@ -45,6 +47,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _checkingUpdate = false;
   DateTime? _lastUpdateCheck;
   bool _updateBadge = false; // 新しい版がある間、設定アイコンに点を出す
+  int? _totalBalance; // 合計の残高（繰越金＋口座の出納。現金・口座等の総額）
+  int? _bankOnly; // 口座等の残高
+  int? _cashOnly; // 手持ち現金の残高
   List<Member> _members = [];
   bool _loading = true;
   _Filter _filter = _Filter.all;
@@ -235,10 +240,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _reload() async {
     final list = await ReceiptStore.loadAll();
     final members = await MemberStore.loadAll();
+    final bank = await BankStore.loadAll();
+    final carry = await AppSettings.getCarry();
+    // 合計の残高は口座出納画面と同じ計算（繰越金＋口座の入出金＋現金の増減）
+    final bal = BankReconcile.balances(
+      carryCash: carry.cash,
+      carryBank: carry.bank,
+      bankEntries: bank,
+      receipts: list,
+    );
     if (!mounted) return;
     setState(() {
       _entries = list;
       _members = members;
+      _bankOnly = bal.bank;
+      _cashOnly = bal.cashOnHand;
+      _totalBalance = bal.bank + bal.cashOnHand;
       _loading = false;
       _refreshTick++;
     });
@@ -311,6 +328,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => ReportScreen(entries: _entries)));
+    // 報告書画面で繰越金を変えた場合に、合計の残高を読み直す
+    _reload();
   }
 
   List<Receipt> get _visible {
@@ -539,6 +558,49 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ],
           ),
+          if (_totalBalance != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: scheme.outlineVariant),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '合計の残高（現金＋口座等・繰越金を含む）',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '¥ ${_currency.format(_totalBalance)}',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: _totalBalance! < 0
+                          ? Colors.red.shade700
+                          : scheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '口座等 ¥${_currency.format(_bankOnly)}　'
+                    '現金 ¥${_currency.format(_cashOnly)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerRight,
