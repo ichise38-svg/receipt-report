@@ -25,6 +25,7 @@ import '../services/event_report.dart';
 import '../services/receipt_merge.dart';
 import 'bank_ledger_screen.dart';
 import '../services/update_checker.dart';
+import '../services/web_update_checker.dart';
 
 /// ホーム：収支一覧（残高サマリー付き）
 class HomeScreen extends StatefulWidget {
@@ -40,7 +41,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<Receipt> _entries = [];
   bool _syncing = false;
   DateTime? _lastAutoSync;
-  bool _updateChecked = false;
+  bool _checkingUpdate = false;
+  DateTime? _lastUpdateCheck;
   List<Member> _members = [];
   bool _loading = true;
   _Filter _filter = _Filter.all;
@@ -62,20 +64,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _pollSync = Timer.periodic(const Duration(minutes: 2), (_) => _autoSync());
   }
 
-  /// 起動時に1回だけ、新しいバージョンがあれば案内する
-  Future<void> _checkUpdate() async {
-    // 更新通知はAndroidアプリのみ（iPhoneのWeb版はAPKを案内しても意味がない）
-    if (kIsWeb || _updateChecked) return;
-    _updateChecked = true;
-    final info = await UpdateChecker.check();
-    if (info == null || !mounted) return;
+  /// 起動時に1回、前面に戻ったときは30分以上あいた場合に、新しい版があれば案内する
+  Future<void> _checkUpdate({bool force = false}) async {
+    if (_checkingUpdate) return;
+    final last = _lastUpdateCheck;
+    if (!force &&
+        last != null &&
+        DateTime.now().difference(last) < const Duration(minutes: 30)) {
+      return;
+    }
+    _checkingUpdate = true;
+    _lastUpdateCheck = DateTime.now();
+    try {
+      if (kIsWeb) {
+        final info = await WebUpdateChecker.check(
+          appBase: Uri.base,
+          currentVersion: UpdateChecker.currentVersion,
+        );
+        if (info == null || !mounted) return;
+        await _showUpdateDialog(info, web: true);
+      } else {
+        final info = await UpdateChecker.check();
+        if (info == null || !mounted) return;
+        await _showUpdateDialog(info, web: false);
+      }
+    } finally {
+      _checkingUpdate = false;
+    }
+  }
+
+  Future<void> _showUpdateDialog(UpdateInfo info, {required bool web}) async {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('新しいバージョンがあります'),
         content: Text(
           '最新版 ${info.latestVersion}（いまのバージョン ${info.currentVersion}）が公開されています。\n'
-          'ダウンロードページを開いて更新してください。',
+          '${web ? '「更新する」で再読み込みします。' : 'ダウンロードページを開いて更新してください。'}',
         ),
         actions: [
           TextButton(
@@ -85,9 +110,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           FilledButton(
             onPressed: () {
               Navigator.pop(ctx);
-              UpdateChecker.openDownloadPage();
+              if (web) {
+                WebUpdateChecker.reloadWithFreshFiles(Uri.base);
+              } else {
+                UpdateChecker.openDownloadPage();
+              }
             },
-            child: const Text('ダウンロードページを開く'),
+            child: Text(web ? '更新する' : 'ダウンロードページを開く'),
           ),
         ],
       ),
@@ -105,7 +134,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// アプリを前面に戻したときも自動同期（直近の同期から5分以上経っている場合のみ）
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _autoSync();
+    if (state == AppLifecycleState.resumed) {
+      _autoSync();
+      _checkUpdate();
+    }
   }
 
   /// 起動時・復帰時・定期の自動同期。失敗しても黙って続行（オフラインでも使えるように）

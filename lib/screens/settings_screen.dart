@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../services/app_settings.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/receipt_store.dart';
+import '../services/update_checker.dart';
+import '../services/web_update_checker.dart';
 
 /// 設定：同期先URL（任意のクラウドのHTTPSエンドポイント）と報告書の主タイトル
 class SettingsScreen extends StatefulWidget {
@@ -18,6 +21,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<SyncPreset> _presets = [];
   bool _loading = true;
   bool _busy = false;
+  bool _checkingUpdate = false;
 
   @override
   void initState() {
@@ -115,6 +119,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _usePreset(SyncPreset preset) {
     setState(() => _endpointCtrl.text = preset.url);
     _snack('「${preset.name}」のURLを入力しました。保存を押すと反映されます。');
+  }
+
+  /// 設定画面の「更新を確認」: 結果をその場で伝える（Android・Web 共通）
+  Future<void> _manualUpdateCheck() async {
+    setState(() => _checkingUpdate = true);
+    try {
+      final info = kIsWeb
+          ? await WebUpdateChecker.check(
+              appBase: Uri.base,
+              currentVersion: UpdateChecker.currentVersion,
+            )
+          : await UpdateChecker.check();
+      if (!mounted) return;
+      if (info == null) {
+        _snack('最新版です（いまのバージョン ${UpdateChecker.currentVersion}）。');
+        return;
+      }
+      _snack('新しい版 ${info.latestVersion} があります。');
+      if (kIsWeb) {
+        WebUpdateChecker.reloadWithFreshFiles(Uri.base);
+      } else {
+        UpdateChecker.openDownloadPage();
+      }
+    } catch (_) {
+      if (mounted) _snack('確認できませんでした。通信状態を確認してください。');
+    } finally {
+      if (mounted) setState(() => _checkingUpdate = false);
+    }
   }
 
   void _snack(String message) {
@@ -254,6 +286,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onPressed: _addPreset,
                     icon: const Icon(Icons.add),
                     label: const Text('候補を追加'),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _checkingUpdate ? null : _manualUpdateCheck,
+                    icon: const Icon(Icons.system_update_alt),
+                    label: Text(_checkingUpdate ? '確認中…' : '更新を確認'),
                   ),
                   const SizedBox(height: 12),
                   Row(
