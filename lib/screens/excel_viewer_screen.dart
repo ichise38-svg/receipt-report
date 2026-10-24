@@ -38,8 +38,12 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
   static const _rowHeaderWidth = 44.0;
 
   final _currency = NumberFormat('#,##0', 'ja_JP');
-  final _carryCashCtrl = TextEditingController(text: '${AppSettings.defaultCarryCash}');
-  final _carryBankCtrl = TextEditingController(text: '${AppSettings.defaultCarryBank}');
+  final _carryCashCtrl = TextEditingController(
+    text: '${AppSettings.defaultCarryCash}',
+  );
+  final _carryBankCtrl = TextEditingController(
+    text: '${AppSettings.defaultCarryBank}',
+  );
 
   bool _loading = true;
   List<LayoutRow> _rows = [];

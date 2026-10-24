@@ -85,8 +85,7 @@ class MemberStore {
           m.eventAttendance.containsKey(eventName)) {
         return m;
       }
-      final map = Map<String, bool>.of(m.eventAttendance)
-        ..[eventName] = value;
+      final map = Map<String, bool>.of(m.eventAttendance)..[eventName] = value;
       return m.copyWith(eventAttendance: map, updatedAt: now);
     }).toList();
     await _saveRaw(updated);

@@ -8,10 +8,7 @@ void main() {
   });
 
   test('明示的に不参加にしたイベントだけ除外される', () {
-    final m = Member(
-      name: '佐藤',
-      eventAttendance: {'25忘年会': false, '旅行': true},
-    );
+    final m = Member(name: '佐藤', eventAttendance: {'25忘年会': false, '旅行': true});
     expect(m.attendsEvent('25忘年会'), isFalse);
     expect(m.attendsEvent('旅行'), isTrue);
     expect(m.attendsEvent('新年会'), isTrue);

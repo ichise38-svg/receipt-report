@@ -131,7 +131,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
     if (url.isNotEmpty && !AppSettings.isUsableEndpoint(url)) {
-      _snack('このURLは同期先に使えません。Google Apps Script のウェブアプリURL（/exec で終わるURL）を入力してください。');
+      _snack(
+        'このURLは同期先に使えません。Google Apps Script のウェブアプリURL（/exec で終わるURL）を入力してください。',
+      );
       return;
     }
     final changed = await AppSettings.setSyncEndpoint(url);
@@ -153,9 +155,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _busy = true);
     try {
       final r = await CloudSyncService.sync();
-      _snack(
-        '保存して同期しました（送信 ${r.sentReceipts}件・受信 ${r.receivedChanges}件）',
-      );
+      _snack('保存して同期しました（送信 ${r.sentReceipts}件・受信 ${r.receivedChanges}件）');
     } on CloudSyncException catch (e) {
       _snack('保存しました。同期は失敗しました：${e.message}');
     } catch (_) {
@@ -224,10 +224,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Text(
-                    '同期先の候補',
-                    style: Theme.of(context).textTheme.labelLarge,
-                  ),
+                  Text('同期先の候補', style: Theme.of(context).textTheme.labelLarge),
                   const SizedBox(height: 4),
                   if (_presets.isEmpty)
                     const Text(

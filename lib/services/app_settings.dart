@@ -94,10 +94,7 @@ class AppSettings {
     if (raw == null || raw.isEmpty) return [];
     final decoded = jsonDecode(raw);
     if (decoded is! List) return [];
-    return decoded
-        .map(SyncPreset.fromJson)
-        .whereType<SyncPreset>()
-        .toList();
+    return decoded.map(SyncPreset.fromJson).whereType<SyncPreset>().toList();
   }
 
   static Future<void> setSyncPresets(List<SyncPreset> presets) async {

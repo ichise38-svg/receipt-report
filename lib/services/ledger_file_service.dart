@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/receipt.dart';
+import 'xlsx_cached.dart';
 import 'xlsx_reader.dart';
 
 /// 取り込みの確認結果（確認ダイアログに表示する内容）
@@ -37,6 +38,12 @@ class LedgerImportPreview {
   /// 年が対象年と違う日付の明細件数（取り込みはするが確認が必要）
   final int yearMismatchCount;
 
+  /// 行事別シートを優先した対応（年間集計の行 → 行事名）
+  final List<String> eventReplaced;
+
+  /// 年間集計の残高（Excelの計算値）と端末の計算の差を確認するための値
+  final int? excelBalanceEnd;
+
   const LedgerImportPreview({
     required this.sheetName,
     required this.toAdd,
@@ -48,6 +55,8 @@ class LedgerImportPreview {
     this.carryBank,
     this.carryReason,
     this.yearMismatchCount = 0,
+    this.eventReplaced = const [],
+    this.excelBalanceEnd,
   });
 
   bool get hasCarry => carryCash != null && carryBank != null;
@@ -78,6 +87,7 @@ class LedgerFileService {
     } catch (_) {
       throw const FormatException('Excelファイルとして読めませんでした。.xlsx形式か確認してください。');
     }
+    final cached = XlsxCached.decode(bytes);
 
     final candidates = <_Found>[];
     for (final entry in book.tables.entries) {
@@ -101,6 +111,37 @@ class LedgerFileService {
     final cols = found.cols;
     final yearHint = _yearHint(rows, cols.headerRow);
     final carry = _readCarry(rows, cols);
+
+    // 行事別シート（合計が年間集計の行と一致するもの）を優先して取り込む
+    final events = <_EventSheet>[];
+    for (final entry in book.tables.entries) {
+      if (entry.key == found.name) continue;
+      final ev = _readEventSheet(entry.key, entry.value.rows, cached);
+      if (ev != null) events.add(ev);
+    }
+    final coveredBy = <int, _EventSheet>{}; // 年間集計の行番号 → 行事
+    final usedEvents = <_EventSheet>{};
+    for (var i = cols.headerRow + 1; i < rows.length; i++) {
+      final row = rows[i];
+      final summary = _text(row, cols.summary);
+      final income = _amount(row, cols.income);
+      final expense = _amount(row, cols.expense);
+      if (summary.contains('繰越') || income + expense <= 0) continue;
+      for (final ev in events) {
+        if (usedEvents.contains(ev)) continue;
+        if (ev.income == income && ev.expense == expense) {
+          coveredBy[i] = ev;
+          usedEvents.add(ev);
+          break;
+        }
+      }
+    }
+    final eventNamesReplaced = <String>[];
+    final eventReceipts = <Receipt>[];
+    for (final ev in usedEvents) {
+      eventNamesReplaced.add(ev.name);
+      eventReceipts.addAll(ev.items);
+    }
     final counts = <String, int>{};
     for (final r in existing) {
       if (r.deleted) continue;
@@ -130,6 +171,8 @@ class LedgerFileService {
       final income = _amount(row, cols.income);
       final expense = _amount(row, cols.expense);
       if (income <= 0 && expense <= 0) continue;
+      // 行事別シートに同じ金額の明細があるため、年間集計の行は取り込まない（二重計上防止）
+      if (coveredBy.containsKey(i)) continue;
 
       final parsed = _parseDate(row, cols.date, yearHint);
       if (parsed == null) {
@@ -174,9 +217,26 @@ class LedgerFileService {
       }
     }
 
+    // 行事別の明細を追加（既存と同じ内容は重複として無視）
+    for (final r in eventReceipts) {
+      final key = _key(r.kind, r.date, r.storeName, r.amount);
+      final left = counts[key] ?? 0;
+      if (left > 0) {
+        counts[key] = left - 1;
+        duplicates++;
+        continue;
+      }
+      toAdd.add(r);
+    }
+
+    // 年間集計の残高（Excelの計算値）。端末の計算と比べるための参考値
+    final balanceEnd = _lastBalance(found.name, cached, rows, cols);
+
     return LedgerImportPreview(
       sheetName: found.name,
       toAdd: toAdd,
+      eventReplaced: eventNamesReplaced,
+      excelBalanceEnd: balanceEnd,
       duplicateCount: duplicates,
       needsCheckCount: needsCheck,
       carrySkipped: carrySkipped,
@@ -444,6 +504,143 @@ class LedgerFileService {
 
   // ---------- 内部処理 ----------
 
+  /// 行事別シート（例「25忘年会」）を読む。
+  /// I10 に収入総計、I11 に支出総計があるシートだけを対象にする。
+  /// 明細は J 列の金額。「※支出の部」より上が収入、下が支出。
+  /// 合計の行（「合計」「小計」）と空欄は無視する。
+  static _EventSheet? _readEventSheet(
+    String name,
+    List<List<Data?>> rows,
+    XlsxCached cached,
+  ) {
+    if (name.contains('集計')) return null;
+    // 収入総計（I10）・支出総計（I11）は Excel の計算結果を使う
+    final incomeTotal = cached.numberAt(name, 'I10')?.round();
+    final expenseTotal = cached.numberAt(name, 'I11')?.round();
+    if (incomeTotal == null || expenseTotal == null) return null;
+
+    final items = <({EntryKind kind, String text, int amount})>[];
+    var mode = 0; // 0: 未定, 1: 収入, 2: 支出
+    var sawIncome = 0;
+    var sawExpense = 0;
+    DateTime? date;
+    for (var r = 0; r < rows.length; r++) {
+      final row = rows[r];
+      final label = [
+        for (var c = 0; c < row.length && c < 9; c++) _cellText(row[c]),
+      ].where((t) => t.isNotEmpty).join(' ');
+      if (label.contains('収入の部')) {
+        mode = 1;
+        continue;
+      }
+      if (label.contains('支出の部')) {
+        mode = 2;
+        continue;
+      }
+      // 日付は J 列の見出し付近（例: 2025年12月21日(日)）
+      if (date == null && r < 12 && row.length > 9) {
+        final t = _cellText(row[9]);
+        final m = RegExp(r'(\d{4})年(\d{1,2})月(\d{1,2})日').firstMatch(t);
+        if (m != null) {
+          date = DateTime(
+            int.parse(m.group(1)!),
+            int.parse(m.group(2)!),
+            int.parse(m.group(3)!),
+          );
+        }
+      }
+      if (mode == 0 || row.length <= 9) continue;
+      // 金額は J 列の計算結果（数式でも値が読める）。行番号は 1 始まり
+      final amount = (cached.numberAt(name, 'J${r + 1}') ?? 0).round();
+      var itemText = [for (var c = 2; c < 9; c++) _cellText(row[c])]
+          .where((t) => t.isNotEmpty)
+          .join(' ')
+          .replaceAll(RegExp(r'[\s\u3000]+'), ' ')
+          .trim();
+      // 先頭の「・」と、人数×単価の注記（例: （ 11 名× 3000 円））は取り除く
+      itemText = itemText
+          .replaceFirst(RegExp(r'^・\s*'), '')
+          .replaceAll(RegExp(r'（\s*\d+\s*名×\s*\d+\s*円）'), '')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      if (amount == 0 || itemText.contains('合計') || itemText.contains('小計')) {
+        continue;
+      }
+      if (mode == 1) sawIncome++;
+      if (mode == 2) sawExpense++;
+      if (amount <= 0 && mode == 1) continue;
+      items.add((
+        kind: mode == 1 ? EntryKind.income : EntryKind.expense,
+        text: itemText,
+        amount: amount,
+      ));
+    }
+    if (sawIncome + sawExpense == 0) return null;
+
+    final eventDate = date ?? DateTime(1970);
+    final income = items
+        .where((e) => e.kind == EntryKind.income)
+        .fold(0, (s, e) => s + e.amount);
+    final expense = items
+        .where((e) => e.kind == EntryKind.expense)
+        .fold(0, (s, e) => s + e.amount);
+    // 合計が一致しない場合は行事として使わない（誤取り込み防止）
+    if (income != incomeTotal || expense != expenseTotal) return null;
+
+    final receipts = <Receipt>[
+      for (final e in items)
+        Receipt(
+          kind: e.kind,
+          storeName: e.text.isEmpty ? name : e.text,
+          date: eventDate,
+          amount: e.amount,
+          category: _categorize(e.kind, '$name ${e.text}'),
+          memo: '行事別シート（$name）から取り込み',
+          event: name,
+        ),
+    ];
+    return _EventSheet(
+      name: name,
+      income: income,
+      expense: expense,
+      items: receipts,
+    );
+  }
+
+  /// 年間集計の最後の残高（Excelの計算値）。読めなければ null
+  static int? _lastBalance(
+    String sheet,
+    XlsxCached cached,
+    List<List<Data?>> rows,
+    _Columns cols,
+  ) {
+    if (cols.balance < 0) return null;
+    int? last;
+    final col = _columnLetter(cols.balance);
+    for (var i = cols.headerRow + 1; i < rows.length; i++) {
+      final dateText = _text(rows[i], cols.date);
+      final summary = _text(rows[i], cols.summary);
+      // 小計・合計・ATM の行に来たら表の終わり
+      if (dateText.isEmpty && _isSummaryRow(summary)) break;
+      if (summary.contains('繰越')) continue;
+      final v = cached.numberAt(sheet, '$col${i + 1}');
+      if (v != null) last = v.round();
+    }
+    return last;
+  }
+
+  /// 列番号（0始まり）→ 英字（A, B, ... Z, AA）
+  static String _columnLetter(int index) {
+    var n = index + 1;
+    var out = '';
+    while (n > 0) {
+      final rem = (n - 1) % 26;
+      out = String.fromCharCode(65 + rem) + out;
+      n = (n - 1) ~/ 26;
+    }
+    return out;
+  }
+
   static _Columns? _findHeader(List<List<Data?>> rows) {
     final limit = rows.length < 30 ? rows.length : 30;
     for (var r = 0; r < limit; r++) {
@@ -463,6 +660,7 @@ class LedgerFileService {
         income: income,
         expense: expense,
         note: idx('備考'),
+        balance: idx('残高'),
       );
     }
     return null;
@@ -616,6 +814,7 @@ class _Columns {
   final int income;
   final int expense;
   final int note;
+  final int balance;
 
   const _Columns({
     required this.headerRow,
@@ -624,6 +823,22 @@ class _Columns {
     required this.income,
     required this.expense,
     required this.note,
+    this.balance = -1,
+  });
+}
+
+/// 行事別シートの取り込み単位（合計と明細）
+class _EventSheet {
+  final String name;
+  final int income;
+  final int expense;
+  final List<Receipt> items;
+
+  const _EventSheet({
+    required this.name,
+    required this.income,
+    required this.expense,
+    required this.items,
   });
 }
 

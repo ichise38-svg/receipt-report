@@ -166,11 +166,29 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
                   if (p.skippedReasons.length > 5)
                     Text('ほか ${p.skippedReasons.length - 5}件'),
                 ],
-                const SizedBox(height: 8),
-                const Text(
-                  '行事別シートは年間集計と同じ金額を含むため取り込みません。',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
+                if (p.eventReplaced.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '行事別シートを優先（${p.eventReplaced.length}件）:',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    '　${p.eventReplaced.join('、')}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  const Text(
+                    '　年間集計の同じ行は、行事別の明細に置き換えて取り込みます（二重計上はしません）。',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+                if (p.excelBalanceEnd != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Excelの最終残高: ¥${_currency.format(p.excelBalanceEnd)}'
+                    '（取り込み後の残高と比べて確認してください）',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
               ],
             ),
           ),
