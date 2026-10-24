@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../services/app_settings.dart';
+import '../services/cloud_sync_service.dart';
 import '../services/ledger_file_service.dart';
 import '../services/receipt_store.dart';
 
@@ -72,6 +73,17 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
     setState(() => _busy = true);
     LedgerImportPreview preview;
     try {
+      // 取り込み前に同期して、共有先の明細も判定に含める（別の端末の取り込みとの重複を防ぐ）
+      if (await CloudSyncService.isConfigured()) {
+        try {
+          await CloudSyncService.sync();
+        } catch (_) {
+          // 同期できないと判定が不完全になり重複の原因になるため、取り込みを止める
+          _toast('同期できませんでした。通信を確認してから、もう一度取り込んでください。');
+          if (mounted) setState(() => _busy = false);
+          return;
+        }
+      }
       final existing = await ReceiptStore.loadRaw();
       preview = LedgerFileService.parseAnnual(bytes, existing);
     } on FormatException catch (e) {
