@@ -150,6 +150,24 @@ class AppSettings {
     return build(a).compareTo(build(b));
   }
 
+  static const _skippedKey = 'ledger_import_skipped';
+
+  /// 直近の取り込みで読めなかった行・項目の理由（取り込み画面に表示する）
+  static Future<List<String>> getImportSkipped() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_skippedKey) ?? <String>[];
+  }
+
+  /// 読めなかった理由を保存する。空リストを渡すと消去する
+  static Future<void> setImportSkipped(List<String> reasons) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (reasons.isEmpty) {
+      await prefs.remove(_skippedKey);
+    } else {
+      await prefs.setStringList(_skippedKey, reasons);
+    }
+  }
+
   /// 報告書の主タイトル（左上に表示される。年間・イベント別の両方）
   static Future<String> getMainTitle() async {
     final prefs = await SharedPreferences.getInstance();

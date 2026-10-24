@@ -19,6 +19,19 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
   bool _busy = false;
   bool _updateCarry = true;
   final _currency = NumberFormat('#,##0', 'ja_JP');
+  List<String> _skipped = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSkipped();
+  }
+
+  Future<void> _loadSkipped() async {
+    final list = await AppSettings.getImportSkipped();
+    if (!mounted) return;
+    setState(() => _skipped = list);
+  }
 
   void _toast(String message) {
     if (!mounted) return;
@@ -80,6 +93,8 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
     setState(() => _busy = true);
     try {
       await ReceiptStore.addAll(preview.toAdd);
+      await AppSettings.setImportSkipped(preview.skippedReasons);
+      await _loadSkipped();
       var carryMsg = '';
       if (preview.hasCarry && _updateCarry) {
         await AppSettings.setCarry(
@@ -159,7 +174,7 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
                 if (p.skippedReasons.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Text(
-                    '読み取れなかった行: ${p.skippedReasons.length}件',
+                    '読み取れなかった行: ${p.skippedReasons.length}件（取り込み後も画面に残ります）',
                     style: TextStyle(color: Colors.red.shade700),
                   ),
                   for (final s in p.skippedReasons.take(5)) Text('・$s'),
@@ -241,6 +256,10 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
                 buttonLabel: 'Excelを選んで取り込む',
                 onPressed: _import,
               ),
+              if (_skipped.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _skippedCard(),
+              ],
               const SizedBox(height: 16),
               const Text(
                 '注意：取り込んだ内容は同期の対象になります（同期ボタンで共有されます）。'
@@ -254,6 +273,57 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// 直近の取り込みで読めなかった行・項目の一覧（確認して手入力してください）
+  Widget _skippedCard() {
+    return Card(
+      color: Colors.red.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.warning_amber, color: Colors.red.shade700),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '読み取れなかった行: ${_skipped.length}件',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Colors.red.shade700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'これらの行は取り込まれていません。Excelを確認して、必要なら報告書や記録画面で手入力してください。',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            for (final s in _skipped)
+              Text('・$s', style: const TextStyle(fontSize: 13)),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () async {
+                  await AppSettings.setImportSkipped([]);
+                  if (!mounted) return;
+                  setState(() => _skipped = []);
+                },
+                child: const Text('一覧を消す'),
+              ),
+            ),
+          ],
         ),
       ),
     );
