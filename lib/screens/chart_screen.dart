@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
+import '../models/bank_entry.dart';
 import '../models/receipt.dart';
+import '../services/app_settings.dart';
+import '../services/bank_reconcile.dart';
+import '../services/bank_store.dart';
 import '../services/ledger_summary.dart';
 import '../services/receipt_store.dart';
 
@@ -15,6 +19,9 @@ class ChartScreen extends StatefulWidget {
 
 class _ChartScreenState extends State<ChartScreen> {
   List<Receipt> _entries = [];
+  List<BankEntry> _bank = [];
+  int _carryCash = 0;
+  int _carryBank = 0;
   bool _loading = true;
   final _currency = NumberFormat('#,##0', 'ja_JP');
 
@@ -26,9 +33,14 @@ class _ChartScreenState extends State<ChartScreen> {
 
   Future<void> _load() async {
     final list = await ReceiptStore.loadAll();
+    final bank = await BankStore.loadAll();
+    final carry = await AppSettings.getCarry();
     if (!mounted) return;
     setState(() {
       _entries = list;
+      _bank = bank;
+      _carryCash = carry.cash;
+      _carryBank = carry.bank;
       _loading = false;
     });
   }
@@ -132,6 +144,12 @@ class _ChartScreenState extends State<ChartScreen> {
         expense[m] = (expense[m] ?? 0) + r.amount;
       }
     }
+    // 口座の出納の月も含める（最新の残高が合計の残高と一致するように）
+    for (final b in _bank) {
+      final m = DateTime(b.date.year, b.date.month);
+      if (first == null || m.isBefore(first)) first = m;
+      if (last == null || m.isAfter(last)) last = m;
+    }
     final months = <DateTime>[];
     var cur = first!;
     while (!cur.isAfter(last!)) {
@@ -139,12 +157,18 @@ class _ChartScreenState extends State<ChartScreen> {
       cur = DateTime(cur.year, cur.month + 1);
     }
     final values = [for (final m in months) (income[m] ?? 0, expense[m] ?? 0)];
-    // 残高（累計・差引残高と同じ定義：収入 − 支出。繰越金は含めない）
+    // 残高（合計の残高）: 各月末時点の 繰越（現金＋口座等）＋ 口座の出納 ± 現金の増減
+    // ホームの「合計の残高」と同じ計算
     final balances = <int>[];
-    var running = 0;
-    for (var i = 0; i < months.length; i++) {
-      running += values[i].$1 - values[i].$2;
-      balances.add(running);
+    for (final m in months) {
+      final next = DateTime(m.year, m.month + 1);
+      final bal = BankReconcile.balances(
+        carryCash: _carryCash,
+        carryBank: _carryBank,
+        bankEntries: _bank.where((b) => b.date.isBefore(next)).toList(),
+        receipts: _entries.where((r) => r.date.isBefore(next)).toList(),
+      );
+      balances.add(bal.bank + bal.cashOnHand);
     }
 
     const colWidth = 56.0;
@@ -159,7 +183,7 @@ class _ChartScreenState extends State<ChartScreen> {
           children: [
             _legend('収入', Colors.green.shade600),
             _legend('支出', Colors.red.shade500),
-            _legend('残高（累計）', Colors.indigo),
+            _legend('残高（合計）', Colors.indigo),
           ],
         ),
         const SizedBox(height: 8),
@@ -229,7 +253,7 @@ class _ChartScreenState extends State<ChartScreen> {
                       ),
                       const SizedBox(height: 2),
                       const Text(
-                        '↑ 残高（累計）',
+                        '↑ 残高（合計）',
                         style: TextStyle(fontSize: 11, color: Colors.grey),
                       ),
                     ],
