@@ -495,23 +495,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: scheme.outlineVariant),
       ),
-      constraints: const BoxConstraints(maxHeight: 620),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '入力 → すぐ下のExcelに反映',
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            QuickEntryPanel(knownEvents: events, onSaved: _reload),
-            const Divider(height: 24),
-            ExcelViewerScreen(embedded: true, refreshKey: _refreshTick),
-          ],
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '入力 → すぐ下のExcelに反映',
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          QuickEntryPanel(knownEvents: events, onSaved: _reload),
+          const Divider(height: 24),
+          ExcelViewerScreen(embedded: true, refreshKey: _refreshTick),
+        ],
       ),
     );
   }

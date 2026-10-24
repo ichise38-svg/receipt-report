@@ -212,7 +212,17 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _buildHeaderInfo(),
-                SizedBox(height: 260, child: _buildGrid()),
+                Container(
+                  height: 360,
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: _buildGrid(),
+                ),
                 _buildExplain(),
               ],
             );
@@ -372,18 +382,28 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
           onPointerCancel: _onPointerUp,
           child: Scrollbar(
             controller: _vScroll,
+            thumbVisibility: true,
+            thickness: 8,
+            radius: const Radius.circular(4),
             child: SingleChildScrollView(
               controller: _vScroll,
-              child: SingleChildScrollView(
+              child: Scrollbar(
                 controller: _hScroll,
-                scrollDirection: Axis.horizontal,
-                child: SizedBox(
-                  width: totalWidth,
-                  child: Column(
-                    children: [
-                      _gridHeader(),
-                      for (var r = 0; r < rowCount; r++) _gridRow(r),
-                    ],
+                thumbVisibility: true,
+                thickness: 8,
+                radius: const Radius.circular(4),
+                notificationPredicate: (n) => n.depth == 1,
+                child: SingleChildScrollView(
+                  controller: _hScroll,
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: totalWidth,
+                    child: Column(
+                      children: [
+                        _gridHeader(),
+                        for (var r = 0; r < rowCount; r++) _gridRow(r),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -571,7 +591,7 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
         color: highlight
             ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)
             : (header ? const Color(0xFFF5F5F5) : null),
-        border: Border.all(color: Colors.grey.shade300, width: 0.5),
+        border: Border.all(color: Colors.grey.shade400, width: 1),
       ),
       child: Text(
         text,
