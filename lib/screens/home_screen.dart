@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -45,6 +46,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   _Filter _filter = _Filter.all;
   bool _showWorkPanel = true;
   int _refreshTick = 0; // 入力・保存のたびにビューワーを再計算する
+  Timer? _debounceSync; // 入力が落ち着いてから自動同期する
+  Timer? _pollSync; // 前面表示中に他メンバーの変更を定期的に取り込む
+  bool _syncAgain = false; // 同期中に変更があったら終了後にもう一度同期する
   final _currency = NumberFormat('#,##0', 'ja_JP');
   final _dateFmt = DateFormat('yyyy/MM/dd');
 
@@ -55,6 +59,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _reload();
     _autoSync();
     _checkUpdate();
+    _pollSync = Timer.periodic(const Duration(minutes: 2), (_) => _autoSync());
   }
 
   /// 起動時に1回だけ、新しいバージョンがあれば案内する
@@ -92,6 +97,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _debounceSync?.cancel();
+    _pollSync?.cancel();
     super.dispose();
   }
 
@@ -101,13 +108,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) _autoSync();
   }
 
-  /// 起動時・復帰時の自動同期。失敗しても黙って続行（オフラインでも使えるように）
+  /// 起動時・復帰時・定期の自動同期。失敗しても黙って続行（オフラインでも使えるように）
   Future<void> _autoSync() async {
+    if (_syncing) return;
     if (!await CloudSyncService.isConfigured()) return;
     final last = _lastAutoSync;
-    if (last != null && DateTime.now().difference(last).inMinutes < 5) return;
+    if (last != null && DateTime.now().difference(last).inSeconds < 60) return;
     _lastAutoSync = DateTime.now();
     await _runSync(showMessage: false);
+  }
+
+  /// 入力・編集・削除のあとに呼ぶ。数秒おいてまとめて自動同期する
+  void _scheduleSync() {
+    _debounceSync?.cancel();
+    _debounceSync = Timer(const Duration(seconds: 3), () async {
+      if (!await CloudSyncService.isConfigured()) return;
+      _lastAutoSync = DateTime.now();
+      await _runSync(showMessage: false);
+    });
   }
 
   /// 同期ボタン（手動）。結果を必ず表示する
@@ -134,7 +152,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _runSync({required bool showMessage}) async {
-    if (_syncing) return;
+    if (_syncing) {
+      _syncAgain = true; // 同期中の変更は終了後に送る
+      return;
+    }
     setState(() => _syncing = true);
     String message;
     try {
@@ -152,6 +173,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(message)));
+    }
+    if (_syncAgain) {
+      _syncAgain = false;
+      _scheduleSync();
     }
   }
 
@@ -172,6 +197,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       context,
     ).push(MaterialPageRoute(builder: (_) => const BankLedgerScreen()));
     _reload();
+    _scheduleSync();
   }
 
   Future<void> _openMembers() async {
@@ -179,6 +205,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       context,
     ).push(MaterialPageRoute(builder: (_) => const MemberScreen()));
     _reload();
+    _scheduleSync();
   }
 
   Future<void> _openForm({EntryKind kind = EntryKind.expense}) async {
@@ -187,6 +214,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     if (outcome != null) {
       _reload();
+      _scheduleSync();
       if (mounted && outcome != SaveOutcome.created) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
@@ -199,7 +227,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => ReceiptDetailScreen(receipt: r)),
     );
-    if (changed == true) _reload();
+    if (changed == true) {
+      _reload();
+      _scheduleSync();
+    }
   }
 
   Future<void> _openEventReport() async {
@@ -218,7 +249,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final imported = await Navigator.of(
       context,
     ).push<bool>(MaterialPageRoute(builder: (_) => const LedgerFileScreen()));
-    if (imported == true) _reload();
+    if (imported == true) {
+      _reload();
+      _scheduleSync();
+    }
   }
 
   Future<void> _openReport() async {
