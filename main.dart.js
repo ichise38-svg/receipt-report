@@ -129871,7 +129871,7 @@ break}m.r=!0
 m.w=new B.bf(Date.now(),0,!1)
 p=3
 s=6
-return B.q(B.a6k(B.Dh(),"1.0.1"),$async$vX)
+return B.q(B.a6k(B.Dh(),"1.0.2"),$async$vX)
 case 6:l=b
 if(l==null||m.c==null){n=[1]
 s=4
@@ -131426,11 +131426,11 @@ var $async$Fj=B.z(function(a,b){if(a===1){o.push(b)
 s=p}while(true)switch(s){case 0:m.a1(new B.aY9(m))
 p=4
 s=7
-return B.q(B.a6k(B.Dh(),"1.0.1"),$async$Fj)
+return B.q(B.a6k(B.Dh(),"1.0.2"),$async$Fj)
 case 7:l=b
 if(m.c==null){n=[1]
 s=5
-break}if(l==null){m.ko("\u6700\u65b0\u7248\u3067\u3059\uff08\u3044\u307e\u306e\u30d0\u30fc\u30b8\u30e7\u30f3 1.0.1\uff09\u3002")
+break}if(l==null){m.ko("\u6700\u65b0\u7248\u3067\u3059\uff08\u3044\u307e\u306e\u30d0\u30fc\u30b8\u30e7\u30f3 1.0.2\uff09\u3002")
 n=[1]
 s=5
 break}m.ko("\u65b0\u3057\u3044\u7248 "+l.a+" \u304c\u3042\u308a\u307e\u3059\u3002")
