@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'screens/home_screen.dart';
+import 'widgets/adaptive_width_frame.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,6 +31,9 @@ class ReceiptReportApp extends StatelessWidget {
         useMaterial3: true,
         fontFamily: null,
       ),
+      // タブレットなど横幅の広い画面では、内容を中央の最大幅に収める
+      builder: (context, child) =>
+          AdaptiveWidthFrame(child: child ?? const SizedBox.shrink()),
       home: const HomeScreen(),
     );
   }
