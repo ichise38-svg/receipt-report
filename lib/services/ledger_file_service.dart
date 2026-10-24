@@ -114,10 +114,15 @@ class LedgerFileService {
 
     // 行事別シート（合計が年間集計の行と一致するもの）を優先して取り込む
     final events = <_EventSheet>[];
+    final eventSkipped = <String>[];
     for (final entry in book.tables.entries) {
-      if (entry.key == found.name) continue;
-      final ev = _readEventSheet(entry.key, entry.value.rows, cached);
-      if (ev != null) events.add(ev);
+      if (entry.key == found.name || entry.key.contains('集計')) continue;
+      final res = _readEventSheet(entry.key, entry.value.rows, cached);
+      if (res.sheet != null) {
+        events.add(res.sheet!);
+      } else if (res.reason != null) {
+        eventSkipped.add('${entry.key}シート: ${res.reason}');
+      }
     }
     final coveredBy = <int, _EventSheet>{}; // 年間集計の行番号 → 行事
     final usedEvents = <_EventSheet>{};
@@ -240,7 +245,7 @@ class LedgerFileService {
       duplicateCount: duplicates,
       needsCheckCount: needsCheck,
       carrySkipped: carrySkipped,
-      skippedReasons: skipped,
+      skippedReasons: [...skipped, ...eventSkipped],
       carryCash: carry.cash,
       carryBank: carry.bank,
       carryReason: carry.reason,
@@ -508,16 +513,28 @@ class LedgerFileService {
   /// I10 に収入総計、I11 に支出総計があるシートだけを対象にする。
   /// 明細は J 列の金額。「※支出の部」より上が収入、下が支出。
   /// 合計の行（「合計」「小計」）と空欄は無視する。
-  static _EventSheet? _readEventSheet(
+  static ({_EventSheet? sheet, String? reason}) _readEventSheet(
     String name,
     List<List<Data?>> rows,
     XlsxCached cached,
   ) {
-    if (name.contains('集計')) return null;
     // 収入総計（I10）・支出総計（I11）は Excel の計算結果を使う
     final incomeTotal = cached.numberAt(name, 'I10')?.round();
     final expenseTotal = cached.numberAt(name, 'I11')?.round();
-    if (incomeTotal == null || expenseTotal == null) return null;
+    // 行事シートらしいか（「収入の部」「支出の部」の見出しがあるか）
+    final looksLikeEvent = rows.any((row) {
+      final label = [
+        for (var c = 0; c < row.length && c < 9; c++) _cellText(row[c]),
+      ].join(' ');
+      return label.contains('収入の部') || label.contains('支出の部');
+    });
+    if (!looksLikeEvent) return (sheet: null, reason: null);
+    if (incomeTotal == null || expenseTotal == null) {
+      return (
+        sheet: null,
+        reason: '合計（I10・I11）の計算結果が保存されていないため読めません。Excelで保存し直してください',
+      );
+    }
 
     final items = <({EntryKind kind, String text, int amount})>[];
     var mode = 0; // 0: 未定, 1: 収入, 2: 支出
@@ -575,7 +592,9 @@ class LedgerFileService {
         amount: amount,
       ));
     }
-    if (sawIncome + sawExpense == 0) return null;
+    if (sawIncome + sawExpense == 0) {
+      return (sheet: null, reason: '「収入の部」「支出の部」の明細が見つかりません');
+    }
 
     final eventDate = date ?? DateTime(1970);
     final income = items
@@ -585,7 +604,13 @@ class LedgerFileService {
         .where((e) => e.kind == EntryKind.expense)
         .fold(0, (s, e) => s + e.amount);
     // 合計が一致しない場合は行事として使わない（誤取り込み防止）
-    if (income != incomeTotal || expense != expenseTotal) return null;
+    if (income != incomeTotal || expense != expenseTotal) {
+      return (
+        sheet: null,
+        reason:
+            '明細の合計（収入$income・支出$expense）が表の合計（収入$incomeTotal・支出$expenseTotal）と一致しません',
+      );
+    }
 
     final receipts = <Receipt>[
       for (final e in items)
@@ -599,11 +624,14 @@ class LedgerFileService {
           event: name,
         ),
     ];
-    return _EventSheet(
-      name: name,
-      income: income,
-      expense: expense,
-      items: receipts,
+    return (
+      sheet: _EventSheet(
+        name: name,
+        income: income,
+        expense: expense,
+        items: receipts,
+      ),
+      reason: null,
     );
   }
 
@@ -688,6 +716,30 @@ class LedgerFileService {
     return '${kind.name}|$d|${name.trim()}|$amount';
   }
 
+  @visibleForTesting
+  static String normalizeDigitsForTest(String text) => _normalizeDigits(text);
+
+  /// 全角の数字・区切り記号・空白を半角に直す（例: ２０２５／３／１ → 2025/3/1）
+  static String _normalizeDigits(String text) {
+    final buf = StringBuffer();
+    for (final ch in text.runes) {
+      if (ch >= 0xFF10 && ch <= 0xFF19) {
+        buf.writeCharCode(ch - 0xFF10 + 0x30); // ０-９
+      } else if (ch == 0xFF0F) {
+        buf.write('/'); // ／
+      } else if (ch == 0xFF0E) {
+        buf.write('.'); // ．
+      } else if (ch == 0xFF0D || ch == 0x2212 || ch == 0x2010 || ch == 0x2015) {
+        buf.write('-'); // －
+      } else if (ch == 0x3000) {
+        buf.write(' ');
+      } else {
+        buf.writeCharCode(ch);
+      }
+    }
+    return buf.toString();
+  }
+
   static String _cellText(Data? d) {
     final v = d?.value;
     if (v == null) return '';
@@ -735,7 +787,7 @@ class LedgerFileService {
       final d = DateTime.utc(1899, 12, 30).add(Duration(days: serial));
       return _ParsedDate(DateTime(d.year, d.month, d.day), true, '');
     }
-    final raw = _cellText(row[col]);
+    final raw = _normalizeDigits(_cellText(row[col]));
     if (raw.isEmpty) return null;
 
     final full = RegExp(
