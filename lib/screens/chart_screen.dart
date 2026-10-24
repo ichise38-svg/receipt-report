@@ -139,21 +139,26 @@ class _ChartScreenState extends State<ChartScreen> {
       cur = DateTime(cur.year, cur.month + 1);
     }
     final values = [for (final m in months) (income[m] ?? 0, expense[m] ?? 0)];
-    final maxValue = values.fold<int>(
-      0,
-      (mx, v) => [mx, v.$1, v.$2].reduce((a, b) => a > b ? a : b),
-    );
+    // 残高（累計・差引残高と同じ定義：収入 − 支出。繰越金は含めない）
+    final balances = <int>[];
+    var running = 0;
+    for (var i = 0; i < months.length; i++) {
+      running += values[i].$1 - values[i].$2;
+      balances.add(running);
+    }
 
     const colWidth = 56.0;
     const chartHeight = 180.0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        Wrap(
+          spacing: 12,
+          runSpacing: 4,
           children: [
             _legend('収入', Colors.green.shade600),
-            const SizedBox(width: 12),
             _legend('支出', Colors.red.shade500),
+            _legend('残高（累計）', Colors.indigo),
           ],
         ),
         const SizedBox(height: 8),
@@ -162,22 +167,57 @@ class _ChartScreenState extends State<ChartScreen> {
           reverse: true, // 直近の月を見やすいよう右端から表示
           child: SizedBox(
             width: colWidth * months.length + 8,
-            height: chartHeight + 28,
-            child: CustomPaint(
-              painter: _MonthlyBarPainter(
-                months: months,
-                values: values,
-                maxValue: maxValue == 0 ? 1 : maxValue,
-                incomeColor: Colors.green.shade600,
-                expenseColor: Colors.red.shade500,
-                gridColor: Colors.grey.shade300,
-                labelStyle: const TextStyle(
-                  fontSize: 11,
-                  color: Colors.black87,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  height: chartHeight + 28,
+                  child: CustomPaint(
+                    painter: _MonthlyBarPainter(
+                      values: values,
+                      balances: balances,
+                      incomeColor: Colors.green.shade600,
+                      expenseColor: Colors.red.shade500,
+                      balanceColor: Colors.indigo,
+                      gridColor: Colors.grey.shade300,
+                      labelStyle: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.black87,
+                      ),
+                      monthLabels: [for (final m in months) '${m.month}月'],
+                      colWidth: colWidth,
+                      chartHeight: chartHeight,
+                    ),
+                  ),
                 ),
-                colWidth: colWidth,
-                chartHeight: chartHeight,
-              ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    for (final b in balances)
+                      SizedBox(
+                        width: colWidth,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            _currency.format(b),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: b < 0
+                                  ? Colors.red.shade700
+                                  : Colors.indigo,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  '↑ 残高（累計）',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+              ],
             ),
           ),
         ),
@@ -273,72 +313,95 @@ class _ChartScreenState extends State<ChartScreen> {
 }
 
 class _MonthlyBarPainter extends CustomPainter {
-  final List<DateTime> months;
   final List<(int, int)> values;
-  final int maxValue;
+  final List<int> balances;
   final Color incomeColor;
   final Color expenseColor;
+  final Color balanceColor;
   final Color gridColor;
   final TextStyle labelStyle;
+  final List<String> monthLabels;
   final double colWidth;
   final double chartHeight;
 
   _MonthlyBarPainter({
-    required this.months,
     required this.values,
-    required this.maxValue,
+    required this.balances,
     required this.incomeColor,
     required this.expenseColor,
+    required this.balanceColor,
     required this.gridColor,
     required this.labelStyle,
+    required this.monthLabels,
     required this.colWidth,
     required this.chartHeight,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
+    // 縦軸の範囲（残高が負になる場合に備えて下端も取る）
+    var hi = 0;
+    var lo = 0;
+    for (final v in values) {
+      if (v.$1 > hi) hi = v.$1;
+      if (v.$2 > hi) hi = v.$2;
+    }
+    for (final b in balances) {
+      if (b > hi) hi = b;
+      if (b < lo) lo = b;
+    }
+    if (hi == lo) hi = lo + 1;
+    final range = (hi - lo).toDouble();
+    double yOf(num v) => chartHeight * (hi - v) / range;
+
     final grid = Paint()
       ..color = gridColor
       ..strokeWidth = 1;
     final inc = Paint()..color = incomeColor;
     final exp = Paint()..color = expenseColor;
+    final line = Paint()
+      ..color = balanceColor
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+    final dot = Paint()..color = balanceColor;
 
-    // 目盛り線（0・1/2・最大）
-    for (final frac in [0.0, 0.5, 1.0]) {
-      final y = chartHeight - chartHeight * frac;
+    // 目盛り線（最大・0・最小）
+    for (final v in <num>{hi, 0, lo}) {
+      final y = yOf(v);
       canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
     }
+    final baseline = yOf(0);
 
     final barWidth = colWidth * 0.32;
-    for (var i = 0; i < months.length; i++) {
+    final centers = <Offset>[];
+    for (var i = 0; i < values.length; i++) {
       final x0 = i * colWidth + 4;
       final (income, expense) = values[i];
-      final incH = chartHeight * income / maxValue;
-      final expH = chartHeight * expense / maxValue;
       if (income > 0) {
         canvas.drawRect(
-          Rect.fromLTWH(
+          Rect.fromLTRB(
             x0 + colWidth * 0.1,
-            chartHeight - incH,
-            barWidth,
-            incH,
+            yOf(income),
+            x0 + colWidth * 0.1 + barWidth,
+            baseline,
           ),
           inc,
         );
       }
       if (expense > 0) {
         canvas.drawRect(
-          Rect.fromLTWH(
+          Rect.fromLTRB(
             x0 + colWidth * 0.1 + barWidth + 2,
-            chartHeight - expH,
-            barWidth,
-            expH,
+            yOf(expense),
+            x0 + colWidth * 0.1 + barWidth * 2 + 2,
+            baseline,
           ),
           exp,
         );
       }
+      centers.add(Offset(x0 + colWidth / 2, yOf(balances[i])));
       final label = TextPainter(
-        text: TextSpan(text: '${months[i].month}月', style: labelStyle),
+        text: TextSpan(text: monthLabels[i], style: labelStyle),
         textDirection: TextDirection.ltr,
       )..layout();
       label.paint(
@@ -346,9 +409,21 @@ class _MonthlyBarPainter extends CustomPainter {
         Offset(x0 + (colWidth - label.width) / 2, chartHeight + 6),
       );
     }
+
+    // 残高の折れ線と点
+    if (centers.length > 1) {
+      final path = Path()..moveTo(centers.first.dx, centers.first.dy);
+      for (final c in centers.skip(1)) {
+        path.lineTo(c.dx, c.dy);
+      }
+      canvas.drawPath(path, line);
+    }
+    for (final c in centers) {
+      canvas.drawCircle(c, 3, dot);
+    }
   }
 
   @override
   bool shouldRepaint(covariant _MonthlyBarPainter old) =>
-      old.values != values || old.maxValue != maxValue;
+      old.values != values || old.balances != balances;
 }
