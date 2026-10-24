@@ -38,4 +38,28 @@ void main() {
     final events = preview.toAdd.map((r) => r.event).toSet()..remove('');
     expect(events.length, 8);
   });
+
+  test('年間集計が差引だけを書いている行事も、差引の一致で取り込む', () {
+    final file = File(
+      Directory('/home/user/uploaded_files')
+          .listSync()
+          .whereType<File>()
+          .firstWhere(
+            (e) => e.path.endsWith('sx.xlsx'),
+            orElse: () => File('/nonexistent'),
+          )
+          .path,
+    );
+    if (!file.existsSync()) {
+      markTestSkipped('サンプルがありません');
+      return;
+    }
+    final preview = LedgerFileService.parseAnnual(
+      file.readAsBytesSync(),
+      const <Receipt>[],
+    );
+    expect(preview.eventReplaced, containsAll(['新年会', '花見会', '消防BBQ']));
+    final events = preview.toAdd.map((r) => r.event).toSet()..remove('');
+    expect(events, containsAll(['新年会', '花見会', '消防BBQ']));
+  });
 }

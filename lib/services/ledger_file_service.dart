@@ -126,18 +126,26 @@ class LedgerFileService {
     }
     final coveredBy = <int, _EventSheet>{}; // 年間集計の行番号 → 行事
     final usedEvents = <_EventSheet>{};
-    for (var i = cols.headerRow + 1; i < rows.length; i++) {
-      final row = rows[i];
-      final summary = _text(row, cols.summary);
-      final income = _amount(row, cols.income);
-      final expense = _amount(row, cols.expense);
-      if (summary.contains('繰越') || income + expense <= 0) continue;
-      for (final ev in events) {
-        if (usedEvents.contains(ev)) continue;
-        if (ev.income == income && ev.expense == expense) {
-          coveredBy[i] = ev;
-          usedEvents.add(ev);
-          break;
+    // 1回目: 収入・支出の両方が一致する行
+    // 2回目: 年間集計が差引（収入−支出）だけを書いている行（例: 支出欄に差額のみ）
+    for (final byNet in [false, true]) {
+      for (var i = cols.headerRow + 1; i < rows.length; i++) {
+        if (coveredBy.containsKey(i)) continue;
+        final row = rows[i];
+        final summary = _text(row, cols.summary);
+        final income = _amount(row, cols.income);
+        final expense = _amount(row, cols.expense);
+        if (summary.contains('繰越') || income + expense <= 0) continue;
+        for (final ev in events) {
+          if (usedEvents.contains(ev)) continue;
+          final match = byNet
+              ? ev.income - ev.expense == income - expense
+              : ev.income == income && ev.expense == expense;
+          if (match) {
+            coveredBy[i] = ev;
+            usedEvents.add(ev);
+            break;
+          }
         }
       }
     }
