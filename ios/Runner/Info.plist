@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>音声で収支を入力するためにマイクを使います。</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>話した内容を文字にして収支の入力に使います。</string>
 	<key>NSCameraUsageDescription</key>
 	<string>レシートを撮影するためにカメラを使用します。</string>
 	<key>NSPhotoLibraryUsageDescription</key>

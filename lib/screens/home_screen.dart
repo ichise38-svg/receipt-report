@@ -28,6 +28,8 @@ import '../services/event_report.dart';
 import '../services/receipt_merge.dart';
 import 'bank_ledger_screen.dart';
 import '../services/update_checker.dart';
+import '../widgets/voice_command_sheet.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../services/web_update_checker.dart';
 
 /// ホーム：収支一覧（残高サマリー付き）
@@ -43,6 +45,9 @@ enum _Filter { all, expense, income }
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<Receipt> _entries = [];
   bool _syncing = false;
+  final _voiceCtrl = TextEditingController();
+  final _speech = stt.SpeechToText();
+  bool _listening = false;
   DateTime? _lastAutoSync;
   bool _checkingUpdate = false;
   DateTime? _lastUpdateCheck;
@@ -151,6 +156,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _debounceSync?.cancel();
     _pollSync?.cancel();
+    _voiceCtrl.dispose();
+    _speech.stop();
     super.dispose();
   }
 
@@ -413,6 +420,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             : CustomScrollView(
                 slivers: [
                   SliverToBoxAdapter(child: _buildSummary(summary)),
+                  SliverToBoxAdapter(child: _buildVoiceInput()),
                   if (_showWorkPanel)
                     SliverToBoxAdapter(child: _buildWorkPanel()),
                   SliverToBoxAdapter(
@@ -481,6 +489,100 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ],
             ),
     );
+  }
+
+  /// 文章で追加・修正・削除する入力欄。音声はキーボードのマイク（iPhone）または音声ボタン（Android）で話す
+  Widget _buildVoiceInput() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: TextField(
+        controller: _voiceCtrl,
+        textInputAction: TextInputAction.send,
+        decoration: InputDecoration(
+          hintText: '例：昨日の交通費 1200円 ／ 5月3日の食費を3000円に直す',
+          isDense: true,
+          border: const OutlineInputBorder(),
+          prefixIcon: const Icon(Icons.edit_note),
+          suffixIcon: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!kIsWeb && Platform.isAndroid)
+                IconButton(
+                  tooltip: '音声で入力',
+                  icon: Icon(_listening ? Icons.mic : Icons.mic_none),
+                  onPressed: _toggleListening,
+                ),
+              IconButton(
+                tooltip: '送信して確認',
+                icon: const Icon(Icons.send),
+                onPressed: _submitVoice,
+              ),
+            ],
+          ),
+        ),
+        onSubmitted: (_) => _submitVoice(),
+      ),
+    );
+  }
+
+  /// Android の音声認識。認識した文字を入力欄に入れ、解析は送信ボタンで行う
+  Future<void> _toggleListening() async {
+    if (_listening) {
+      await _speech.stop();
+      if (mounted) setState(() => _listening = false);
+      return;
+    }
+    final ok = await _speech.initialize(
+      onError: (_) {
+        if (mounted) setState(() => _listening = false);
+      },
+      onStatus: (status) {
+        if (status == 'done' || status == 'notListening') {
+          if (mounted) setState(() => _listening = false);
+        }
+      },
+    );
+    if (!ok) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('音声入力を使えませんでした。マイクの許可を確認するか、キーボードのマイクで入力してください。'),
+            ),
+          );
+      }
+      return;
+    }
+    setState(() => _listening = true);
+    await _speech.listen(
+      listenOptions: stt.SpeechListenOptions(
+        localeId: 'ja_JP',
+        partialResults: true,
+      ),
+      onResult: (result) {
+        if (!mounted) return;
+        _voiceCtrl.value = TextEditingValue(
+          text: result.recognizedWords,
+          selection: TextSelection.collapsed(
+            offset: result.recognizedWords.length,
+          ),
+        );
+        if (result.finalResult) setState(() => _listening = false);
+      },
+    );
+  }
+
+  Future<void> _submitVoice() async {
+    final text = _voiceCtrl.text.trim();
+    if (text.isEmpty) return;
+    final saved = await showVoiceCommandSheet(context, text);
+    if (!mounted) return;
+    if (saved == true) {
+      _voiceCtrl.clear();
+      _reload();
+      _scheduleSync();
+    }
   }
 
   /// 入力とExcelビューワーを並べた作業パネル（入力すると下のシートにすぐ反映）
