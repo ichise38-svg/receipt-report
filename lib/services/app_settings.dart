@@ -76,9 +76,12 @@ class AppSettings {
   /// 戻り値: 同期先が変わったかどうか
   static Future<bool> setSyncEndpoint(String url) async {
     final prefs = await SharedPreferences.getInstance();
-    final next = url.trim();
-    final changed = (prefs.getString(_endpointKey) ?? '') != next;
+    final before = await getSyncEndpoint();
+    // 初期設定と同じURLは保存しない（初期設定の値として扱う）
+    final next = url.trim() == builtInSyncEndpoint ? '' : url.trim();
     await prefs.setString(_endpointKey, next);
+    final after = await getSyncEndpoint();
+    final changed = before != after;
     if (changed) {
       await prefs.remove('cloud_sync_cursor');
       await prefs.remove('cloud_last_push');

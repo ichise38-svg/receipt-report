@@ -37,8 +37,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _load() async {
-    final custom = await AppSettings.isUsingCustomEndpoint();
-    final url = custom ? await AppSettings.getSyncEndpoint() : '';
+    final url = await AppSettings.getSyncEndpoint();
     final title = await AppSettings.getMainTitle();
     final presets = await AppSettings.getSyncPresets();
     if (!mounted) return;
