@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/member.dart';
 import '../services/app_settings.dart';
@@ -71,6 +72,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _reload();
+    _purgeEpochOnce();
     _autoSync();
     _refreshUpdateBadge();
     _checkUpdate();
@@ -167,6 +169,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _autoSync();
       _checkUpdate();
+    }
+  }
+
+  /// 過去の取り込み不具合で入った日付不明（1970年）の明細を、一度だけ削除して同期する
+  Future<void> _purgeEpochOnce() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('purged_epoch_v1') == true) return;
+    final count = await ReceiptStore.purgeEpochDated();
+    await prefs.setBool('purged_epoch_v1', true);
+    if (count > 0 && mounted) {
+      _reload();
+      _scheduleSync();
     }
   }
 

@@ -604,7 +604,11 @@ class LedgerFileService {
       return (sheet: null, reason: '「収入の部」「支出の部」の明細が見つかりません');
     }
 
-    final eventDate = date ?? DateTime(1970);
+    // 日付が読めない行事シートは取り込まない（1970年の明細が増えるのを防ぐ）
+    if (date == null) {
+      return (sheet: null, reason: '行事名「$name」の日付が読めないため取り込みを見送りました');
+    }
+    final eventDate = date;
     final income = items
         .where((e) => e.kind == EntryKind.income)
         .fold(0, (s, e) => s + e.amount);

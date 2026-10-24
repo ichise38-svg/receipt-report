@@ -94,6 +94,27 @@ class ReceiptStore {
     await _saveRaw(all);
   }
 
+  /// 過去の不具合で作られた日付不明（1970年）の明細を削除（tombstone）にする。
+  /// 件数を返す。すでに削除済みのものは対象外。
+  static Future<int> purgeEpochDated() async {
+    final all = await loadRaw();
+    var count = 0;
+    final now = DateTime.now();
+    for (var i = 0; i < all.length; i++) {
+      final r = all[i];
+      if (r.deleted || r.date.year != 1970) continue;
+      all[i] = r.copyWith(
+        deleted: true,
+        updatedAt: now,
+        imagePath: '',
+        imageUrl: '',
+      );
+      count++;
+    }
+    if (count > 0) await _saveRaw(all);
+    return count;
+  }
+
   /// 削除（tombstone として残し、同期で全員に反映させる）
   static Future<void> delete(Receipt receipt) async {
     final all = await loadRaw();
