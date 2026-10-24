@@ -99,10 +99,11 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      // 長いレシートも切れないよう、高さの上限も広めに取る（縦横比は保つ）
+      // 縦長（長いレシート）・横長（領収書）のどちらも文字が読める大きさを残す。
+      // 縦横比は保たれる（上限は長辺の大きさとして働く）
       final picked = await ImagePicker().pickImage(
         source: source,
-        maxWidth: 1600,
+        maxWidth: 2400,
         maxHeight: 6000,
         imageQuality: 90,
       );
@@ -449,7 +450,7 @@ class _ReceiptFormScreenState extends State<ReceiptFormScreen> {
         ClipRRect(
           borderRadius: BorderRadius.circular(12),
           child: Container(
-            height: 240,
+            constraints: const BoxConstraints(minHeight: 240, maxHeight: 520),
             width: double.infinity,
             color: Colors.grey.shade200,
             child: hasImage

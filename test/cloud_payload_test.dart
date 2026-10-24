@@ -47,6 +47,16 @@ void main() {
     expect(out.width, 640);
   });
 
+  test('横長の領収書は幅2400pxまで残り、文字が読める', () {
+    final wide = img.Image(width: 3000, height: 1000);
+    final src = Uint8List.fromList(img.encodePng(wide));
+    final out = img.decodeJpg(
+      base64Decode(CloudSyncService.compressBytesForTest(src)!),
+    );
+    expect(out!.width, 2400);
+    expect(out.height, 800);
+  });
+
   test('ほぼ正方形の画像は従来どおり長辺1200pxに縮小される', () {
     final sq = img.Image(width: 2000, height: 1800);
     final src = Uint8List.fromList(img.encodePng(sq));

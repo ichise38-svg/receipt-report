@@ -30,7 +30,7 @@ class CloudSyncService {
   /// 画像は送信前に縮小して転送量・保存コストを抑える
   static const int maxImageSide = 1200;
 
-  /// 縦長（長いレシート）の画像は文字が読めるよう、長辺の上限を広げる
+  /// 縦長・横長の領収書は文字が読めるよう、長辺の上限を広げる
   static const int maxTallImageSide = 2400;
   static const int jpegQuality = 80;
 
@@ -270,8 +270,11 @@ class CloudSyncService {
       return null;
     }
     if (decoded == null) return null;
-    final isTall = decoded.height > decoded.width * 1.5;
-    final limit = isTall ? maxTallImageSide : maxImageSide;
+    // 縦横比が極端な領収書（長いレシート・横長の領収書）は文字が読めるよう上限を広げる
+    final isElongated =
+        decoded.height > decoded.width * 1.5 ||
+        decoded.width > decoded.height * 1.5;
+    final limit = isElongated ? maxTallImageSide : maxImageSide;
     final resized = decoded.width > decoded.height
         ? (decoded.width > limit
               ? img.copyResize(decoded, width: limit)
