@@ -34,6 +34,20 @@ class WebUpdateChecker {
     }
   }
 
+  /// 公開版のビルド番号（version.json の build_number）。読めなければ null。
+  static int? parseBuild(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is! Map) return null;
+      final b = decoded['build_number'];
+      if (b is int) return b;
+      if (b is String) return int.tryParse(b.trim());
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// 「更新する」を押したとき: 版番号付きのURLで読み直す。
   /// Flutter の service worker は古いキャッシュを使うため、
   /// 別URLで開くと新しいファイルを取りに行く。
@@ -48,6 +62,7 @@ class WebUpdateChecker {
   }
 
   /// 新しい版があれば UpdateInfo を返す。なければ・失敗時は null。
+  /// currentVersion は「1.0.4+6」の形式（ビルド番号つき）でも「1.0.4」でもよい。
   static Future<UpdateInfo?> check({
     required Uri appBase,
     required String currentVersion,
@@ -61,11 +76,16 @@ class WebUpdateChecker {
       if (res.statusCode != 200) return null;
       final latest = parseVersion(res.body);
       if (latest == null) return null;
-      if (UpdateChecker.compareVersions(latest, currentVersion) <= 0) {
+      final latestBuild = parseBuild(res.body);
+      final parts = currentVersion.split('+');
+      final curVer = parts.first;
+      final curBuild = parts.length > 1 ? int.tryParse(parts[1]) : null;
+      if (UpdateChecker.compareFull(latest, latestBuild, curVer, curBuild) <=
+          0) {
         return null;
       }
       return UpdateInfo(
-        latestVersion: latest,
+        latestVersion: latestBuild == null ? latest : '$latest+$latestBuild',
         currentVersion: currentVersion,
         downloadUrl: appBase.toString(),
       );

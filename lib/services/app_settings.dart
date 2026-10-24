@@ -124,7 +124,8 @@ class AppSettings {
     return compareVersionStrings(latest, currentVersion) > 0;
   }
 
-  /// 版番号の比較（1.0.3 と 1.0.2 など）。a > b なら正
+  /// 版番号の比較（1.0.3 と 1.0.2 など）。a > b なら正。
+  /// 版番号が同じなら「+」の後のビルド番号（1.0.4+6 と 1.0.4+5 など）で比べる。
   static int compareVersionStrings(String a, String b) {
     List<int> parts(String v) => v
         .split('+')
@@ -132,6 +133,12 @@ class AppSettings {
         .split('.')
         .map((e) => int.tryParse(e.trim()) ?? 0)
         .toList();
+    int build(String v) {
+      final plus = v.split('+');
+      if (plus.length < 2) return 0;
+      return int.tryParse(plus[1].trim()) ?? 0;
+    }
+
     final x = parts(a);
     final y = parts(b);
     final n = x.length > y.length ? x.length : y.length;
@@ -140,7 +147,7 @@ class AppSettings {
       final q = i < y.length ? y[i] : 0;
       if (p != q) return p.compareTo(q);
     }
-    return 0;
+    return build(a).compareTo(build(b));
   }
 
   /// 報告書の主タイトル（左上に表示される。年間・イベント別の両方）

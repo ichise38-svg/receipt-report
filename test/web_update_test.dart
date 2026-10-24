@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:receipt_report/services/web_update_checker.dart';
 
 void main() {
+  buildNumberWebTests();
+
   test('version.json のURLは同じ場所に作られ、毎回違う値が付く', () {
     final base = Uri.parse('https://ichise38-svg.github.io/receipt-report/');
     final a = WebUpdateChecker.versionUri(base, nowMs: 1000);
@@ -27,5 +29,19 @@ void main() {
     expect(WebUpdateChecker.parseVersion('{"version":"abc"}'), isNull);
     expect(WebUpdateChecker.parseVersion('{}'), isNull);
     expect(WebUpdateChecker.parseVersion('[1,2]'), isNull);
+  });
+}
+
+void buildNumberWebTests() {
+  test('version.json の build_number を読む（文字列・数値どちらも）', () {
+    expect(
+      WebUpdateChecker.parseBuild('{"version":"1.0.4","build_number":"7"}'),
+      7,
+    );
+    expect(
+      WebUpdateChecker.parseBuild('{"version":"1.0.4","build_number":7}'),
+      7,
+    );
+    expect(WebUpdateChecker.parseBuild('{"version":"1.0.4"}'), isNull);
   });
 }

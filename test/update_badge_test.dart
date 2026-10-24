@@ -7,6 +7,8 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  buildNumberTests();
+
   test('版番号の比較は数字の大小で判定する（1.0.10 > 1.0.9）', () {
     expect(AppSettings.compareVersionStrings('1.0.3', '1.0.2'), greaterThan(0));
     expect(
@@ -31,5 +33,35 @@ void main() {
     await AppSettings.saveLatestVersion('1.0.3');
     expect(await AppSettings.hasNewerVersion('1.0.3'), isFalse);
     expect(await AppSettings.hasNewerVersion('1.0.4'), isFalse);
+  });
+}
+
+void buildNumberTests() {
+  test('同じ版番号でもビルド番号が新しければ新しい版（1.0.4+7 > 1.0.4+6）', () {
+    expect(
+      AppSettings.compareVersionStrings('1.0.4+7', '1.0.4+6'),
+      greaterThan(0),
+    );
+    expect(
+      AppSettings.compareVersionStrings('1.0.4+6', '1.0.4+7'),
+      lessThan(0),
+    );
+    expect(AppSettings.compareVersionStrings('1.0.4+6', '1.0.4+6'), 0);
+    expect(
+      AppSettings.compareVersionStrings('1.0.5+7', '1.0.4+9'),
+      greaterThan(0),
+    );
+  });
+
+  test('アプリ内の版（1.0.4+6）に対して、公開版 1.0.4+7 は通知対象', () async {
+    SharedPreferences.setMockInitialValues({});
+    await AppSettings.saveLatestVersion('1.0.4+7');
+    expect(await AppSettings.hasNewerVersion('1.0.4+6'), isTrue);
+  });
+
+  test('アプリ内の版（1.0.4+6）に対して、公開版 1.0.4+6 は通知しない', () async {
+    SharedPreferences.setMockInitialValues({});
+    await AppSettings.saveLatestVersion('1.0.4+6');
+    expect(await AppSettings.hasNewerVersion('1.0.4+6'), isFalse);
   });
 }

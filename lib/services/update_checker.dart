@@ -19,11 +19,18 @@ class UpdateInfo {
 /// GitHub Releases の最新版と、いま動いているアプリのバージョンを比べる。
 ///
 /// リリース本文に次の1行を書いておくと、その番号を新版として使う:
-///   version: 1.0.3+4
+///   version: 1.0.5+7
+/// 版番号（1.0.5）だけでなくビルド番号（+7）も比べる。
 /// 失敗（オフライン・未設定など）は黙って null を返し、アプリの動作は止めない。
 class UpdateChecker {
   /// このアプリのバージョン（pubspec.yaml の version と必ず合わせる）
-  static const currentVersion = '1.0.4';
+  static const currentVersion = '1.0.5';
+
+  /// このアプリのビルド番号（pubspec.yaml の +の後ろと必ず合わせる）
+  static const currentBuild = 7;
+
+  /// 版番号とビルド番号を並べた表示用の値（例: 1.0.4+6）
+  static String get currentFull => '$currentVersion+$currentBuild';
 
   static const _releaseApi =
       'https://api.github.com/repos/ichise38-svg/receipt-report/releases/tags/android-latest';
@@ -46,10 +53,13 @@ class UpdateChecker {
       final m = RegExp(r'version:\s*([0-9]+(?:\.[0-9]+)*)').firstMatch(notes);
       if (m == null) return null;
       final latest = m.group(1)!;
-      if (compareVersions(latest, current) <= 0) return null;
+      final latestBuild = _buildFromNotes(notes);
+      if (compareFull(latest, latestBuild, current, currentBuild) <= 0) {
+        return null;
+      }
       return UpdateInfo(
-        latestVersion: latest,
-        currentVersion: current,
+        latestVersion: latestBuild == null ? latest : '$latest+$latestBuild',
+        currentVersion: '$current+$currentBuild',
         downloadUrl: downloadPageUrl,
       );
     } catch (_) {
@@ -61,6 +71,23 @@ class UpdateChecker {
   static Future<bool> openDownloadPage() async {
     final uri = Uri.parse(downloadPageUrl);
     return launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  /// リリース本文の「build: 7」または「version: 1.0.5+7」からビルド番号を読む
+  static int? _buildFromNotes(String notes) {
+    final plus = RegExp(
+      r'version:\s*[0-9]+(?:\.[0-9]+)*\+([0-9]+)',
+    ).firstMatch(notes);
+    if (plus != null) return int.tryParse(plus.group(1)!);
+    final b = RegExp(r'build:\s*([0-9]+)').firstMatch(notes);
+    return b == null ? null : int.tryParse(b.group(1)!);
+  }
+
+  /// 版番号を先に比べ、同じなら ビルド番号で比べる（負: a が古い / 0: 同じ / 正: a が新しい）
+  static int compareFull(String a, int? aBuild, String b, int? bBuild) {
+    final v = compareVersions(a, b);
+    if (v != 0) return v;
+    return (aBuild ?? 0).compareTo(bBuild ?? 0);
   }
 
   /// "1.2.3" 形式の比較（負なら a が古い、0 は同じ、正なら a が新しい）

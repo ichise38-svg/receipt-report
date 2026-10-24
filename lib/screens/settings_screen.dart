@@ -127,13 +127,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final info = kIsWeb
           ? await WebUpdateChecker.check(
               appBase: Uri.base,
-              currentVersion: UpdateChecker.currentVersion,
+              currentVersion: UpdateChecker.currentFull,
             )
           : await UpdateChecker.check();
       if (!mounted) return;
       if (info == null) {
-        await AppSettings.saveLatestVersion(UpdateChecker.currentVersion);
-        _snack('最新版です（いまのバージョン ${UpdateChecker.currentVersion}）。');
+        await AppSettings.saveLatestVersion(UpdateChecker.currentFull);
+        _snack('最新版です（いまのバージョン ${UpdateChecker.currentFull}）。');
         return;
       }
       await AppSettings.saveLatestVersion(info.latestVersion);

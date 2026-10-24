@@ -87,7 +87,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (kIsWeb) {
         final info = await WebUpdateChecker.check(
           appBase: Uri.base,
-          currentVersion: UpdateChecker.currentVersion,
+          currentVersion: UpdateChecker.currentFull,
         );
         if (info == null) return;
         await AppSettings.saveLatestVersion(info.latestVersion);
@@ -111,9 +111,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// 設定アイコンに出す「新しい版がある」点の表示を読み直す
   Future<void> _refreshUpdateBadge() async {
-    final hasNew = await AppSettings.hasNewerVersion(
-      UpdateChecker.currentVersion,
-    );
+    final hasNew = await AppSettings.hasNewerVersion(UpdateChecker.currentFull);
     if (!mounted || hasNew == _updateBadge) return;
     setState(() => _updateBadge = hasNew);
   }
