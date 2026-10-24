@@ -149,6 +149,7 @@ class _ChartScreenState extends State<ChartScreen> {
 
     const colWidth = 56.0;
     const chartHeight = 180.0;
+    final (axisHi, axisLo) = _axisRange(values, balances);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -162,64 +163,81 @@ class _ChartScreenState extends State<ChartScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          reverse: true, // 直近の月を見やすいよう右端から表示
-          child: SizedBox(
-            width: colWidth * months.length + 8,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  height: chartHeight + 28,
-                  child: CustomPaint(
-                    painter: _MonthlyBarPainter(
-                      values: values,
-                      balances: balances,
-                      incomeColor: Colors.green.shade600,
-                      expenseColor: Colors.red.shade500,
-                      balanceColor: Colors.indigo,
-                      gridColor: Colors.grey.shade300,
-                      labelStyle: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.black87,
-                      ),
-                      monthLabels: [for (final m in months) '${m.month}月'],
-                      colWidth: colWidth,
-                      chartHeight: chartHeight,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    for (final b in balances)
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 縦軸の数字（横にスクロールしても見えたままにする）
+            _YAxis(
+              hi: axisHi,
+              lo: axisLo,
+              chartHeight: chartHeight,
+              fmt: _currency,
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                reverse: true, // 直近の月を見やすいよう右端から表示
+                child: SizedBox(
+                  width: colWidth * months.length + 8,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 8), // 縦軸の数字の上端と位置を合わせる
                       SizedBox(
-                        width: colWidth,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            _currency.format(b),
-                            style: TextStyle(
+                        height: chartHeight + 28,
+                        child: CustomPaint(
+                          painter: _MonthlyBarPainter(
+                            values: values,
+                            balances: balances,
+                            incomeColor: Colors.green.shade600,
+                            expenseColor: Colors.red.shade500,
+                            balanceColor: Colors.indigo,
+                            gridColor: Colors.grey.shade300,
+                            labelStyle: const TextStyle(
                               fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: b < 0
-                                  ? Colors.red.shade700
-                                  : Colors.indigo,
+                              color: Colors.black87,
                             ),
+                            monthLabels: [
+                              for (final m in months) '${m.month}月',
+                            ],
+                            colWidth: colWidth,
+                            chartHeight: chartHeight,
                           ),
                         ),
                       ),
-                  ],
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          for (final b in balances)
+                            SizedBox(
+                              width: colWidth,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  _currency.format(b),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: b < 0
+                                        ? Colors.red.shade700
+                                        : Colors.indigo,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        '↑ 残高（累計）',
+                        style: TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 2),
-                const Text(
-                  '↑ 残高（累計）',
-                  style: TextStyle(fontSize: 11, color: Colors.grey),
-                ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ],
     );
@@ -339,18 +357,7 @@ class _MonthlyBarPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 縦軸の範囲（残高が負になる場合に備えて下端も取る）
-    var hi = 0;
-    var lo = 0;
-    for (final v in values) {
-      if (v.$1 > hi) hi = v.$1;
-      if (v.$2 > hi) hi = v.$2;
-    }
-    for (final b in balances) {
-      if (b > hi) hi = b;
-      if (b < lo) lo = b;
-    }
-    if (hi == lo) hi = lo + 1;
+    final (hi, lo) = _axisRange(values, balances);
     final range = (hi - lo).toDouble();
     double yOf(num v) => chartHeight * (hi - v) / range;
 
@@ -426,4 +433,68 @@ class _MonthlyBarPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _MonthlyBarPainter old) =>
       old.values != values || old.balances != balances;
+}
+
+/// 縦軸の範囲（最大・最小）。残高が負になる場合に備えて下端も取る
+(int, int) _axisRange(List<(int, int)> values, List<int> balances) {
+  var hi = 0;
+  var lo = 0;
+  for (final v in values) {
+    if (v.$1 > hi) hi = v.$1;
+    if (v.$2 > hi) hi = v.$2;
+  }
+  for (final b in balances) {
+    if (b > hi) hi = b;
+    if (b < lo) lo = b;
+  }
+  if (hi == lo) hi = lo + 1;
+  return (hi, lo);
+}
+
+/// 縦軸の目盛りの数字（最大・0・最小。横線と同じ位置）
+class _YAxis extends StatelessWidget {
+  final int hi;
+  final int lo;
+  final double chartHeight;
+  final NumberFormat fmt;
+
+  const _YAxis({
+    required this.hi,
+    required this.lo,
+    required this.chartHeight,
+    required this.fmt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final range = (hi - lo).toDouble();
+    final ticks = <int>{hi, 0, lo}.toList()..sort((a, b) => b.compareTo(a));
+    return SizedBox(
+      width: 60,
+      height: 8 + chartHeight + 28,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          for (final v in ticks)
+            Positioned(
+              top: 8 + chartHeight * (hi - v) / range - 7,
+              left: 0,
+              right: 6,
+              height: 14,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    fmt.format(v),
+                    style: const TextStyle(fontSize: 10, color: Colors.black87),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
