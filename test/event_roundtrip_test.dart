@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:receipt_report/models/receipt.dart';
 import 'package:receipt_report/services/event_report.dart';
 import 'package:receipt_report/services/ledger_file_service.dart';
 import 'package:receipt_report/services/receipt_store.dart';
