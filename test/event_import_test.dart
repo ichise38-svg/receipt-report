@@ -62,4 +62,32 @@ void main() {
     final events = preview.toAdd.map((r) => r.event).toSet()..remove('');
     expect(events, containsAll(['新年会', '花見会', '消防BBQ']));
   });
+
+  test('行事の日付は全角数字でも読め、1970年にならない', () {
+    final file = File(
+      Directory('/home/user/uploaded_files')
+          .listSync()
+          .whereType<File>()
+          .firstWhere(
+            (e) => e.path.endsWith('sx.xlsx'),
+            orElse: () => File('/nonexistent'),
+          )
+          .path,
+    );
+    if (!file.existsSync()) {
+      markTestSkipped('サンプルがありません');
+      return;
+    }
+    final preview = LedgerFileService.parseAnnual(
+      file.readAsBytesSync(),
+      const <Receipt>[],
+    );
+    final ev = preview.toAdd.where(
+      (r) => r.event == '新年会' || r.event == '消防BBQ',
+    );
+    expect(ev, isNotEmpty);
+    for (final r in ev) {
+      expect(r.date.year, 2026);
+    }
+  });
 }

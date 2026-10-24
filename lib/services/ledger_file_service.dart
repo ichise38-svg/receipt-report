@@ -117,7 +117,12 @@ class LedgerFileService {
     final eventSkipped = <String>[];
     for (final entry in book.tables.entries) {
       if (entry.key == found.name || entry.key.contains('集計')) continue;
-      final res = _readEventSheet(entry.key, entry.value.rows, cached);
+      final res = _readEventSheet(
+        entry.key,
+        entry.value.rows,
+        cached,
+        yearHint,
+      );
       if (res.sheet != null) {
         events.add(res.sheet!);
       } else if (res.reason != null) {
@@ -525,6 +530,7 @@ class LedgerFileService {
     String name,
     List<List<Data?>> rows,
     XlsxCached cached,
+    int yearHint,
   ) {
     // 収入総計（I10）・支出総計（I11）は Excel の計算結果を使う
     final incomeTotal = cached.numberAt(name, 'I10')?.round();
@@ -563,16 +569,10 @@ class LedgerFileService {
         continue;
       }
       // 日付は J 列の見出し付近（例: 2025年12月21日(日)）
+      // 全角数字・Excelの日付（シリアル値）も読めるように _parseDate を使う
       if (date == null && r < 12 && row.length > 9) {
-        final t = _cellText(row[9]);
-        final m = RegExp(r'(\d{4})年(\d{1,2})月(\d{1,2})日').firstMatch(t);
-        if (m != null) {
-          date = DateTime(
-            int.parse(m.group(1)!),
-            int.parse(m.group(2)!),
-            int.parse(m.group(3)!),
-          );
-        }
+        final p = _parseDate(row, 9, yearHint);
+        if (p != null && p.exact) date = p.date;
       }
       if (mode == 0 || row.length <= 9) continue;
       // 金額は J 列の計算結果（数式でも値が読める）。行番号は 1 始まり
