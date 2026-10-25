@@ -27,7 +27,7 @@ class UpdateChecker {
   static const currentVersion = '1.0.7';
 
   /// このアプリのビルド番号（pubspec.yaml の +の後ろと必ず合わせる）
-  static const currentBuild = 12;
+  static const currentBuild = 13;
 
   /// 版番号とビルド番号を並べた表示用の値（例: 1.0.4+6）
   static String get currentFull => '$currentVersion+$currentBuild';

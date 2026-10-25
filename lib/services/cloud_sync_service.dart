@@ -221,14 +221,46 @@ class CloudSyncService {
     Map<String, dynamic> payload, {
     required Duration timeout,
   }) async {
-    final response = await http
-        .post(
-          uri,
-          headers: {'Content-Type': 'text/plain; charset=utf-8'},
-          body: utf8.encode(jsonEncode(payload)),
-        )
-        .timeout(timeout);
+    if (kIsWeb) {
+      // ブラウザ版は転送をブラウザが処理するため、従来どおり送る
+      final res = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'text/plain; charset=utf-8'},
+            body: utf8.encode(jsonEncode(payload)),
+          )
+          .timeout(timeout);
+      return _parseResponse(res);
+    }
 
+    final client = http.Client();
+    final http.Response response;
+    try {
+      // Apps Script は POST を 302 で別URLに転送する。自動追従すると
+      // POST が GET に変わり失敗するため、転送先を GET で手動取得する。
+      final first = http.Request('POST', uri)
+        ..followRedirects = false
+        ..headers['Content-Type'] = 'text/plain; charset=utf-8'
+        ..bodyBytes = utf8.encode(jsonEncode(payload));
+      final streamed = await client.send(first).timeout(timeout);
+      final firstResponse = await http.Response.fromStream(streamed);
+      var current = firstResponse;
+      if (firstResponse.statusCode >= 300 && firstResponse.statusCode < 400) {
+        final location = firstResponse.headers['location'];
+        if (location == null || location.isEmpty) {
+          throw const CloudSyncException('送信先の転送先が不明です。');
+        }
+        final target = uri.resolve(location);
+        current = await client.get(target).timeout(timeout);
+      }
+      response = current;
+    } finally {
+      client.close();
+    }
+    return _parseResponse(response);
+  }
+
+  static Map<String, dynamic> _parseResponse(http.Response response) {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudSyncException(
         '通信に失敗しました（HTTP ${response.statusCode}）。送信先の設定を確認してください。',
