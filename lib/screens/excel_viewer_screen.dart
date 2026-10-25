@@ -212,6 +212,14 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _buildHeaderInfo(),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: _openFullScreen,
+                    icon: const Icon(Icons.fullscreen),
+                    label: const Text('全画面で見る'),
+                  ),
+                ),
                 Container(
                   height: 360,
                   decoration: BoxDecoration(
@@ -247,6 +255,15 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
                 _buildExplain(),
               ],
             ),
+    );
+  }
+
+  /// 全画面（別画面）で同じExcelビューワーを開く。戻ると元の作業パネルに戻る
+  void _openFullScreen() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const ExcelViewerScreen(embedded: false),
+      ),
     );
   }
 
