@@ -32,6 +32,9 @@ class UpdateChecker {
   /// 版番号とビルド番号を並べた表示用の値（例: 1.0.4+6）
   static String get currentFull => displayVersion(currentVersion, currentBuild);
 
+  /// 比較用の値（例: 1.0.7+13）。Web版の比較は「+」区切りのビルド番号を読む。
+  static String get currentCompare => '$currentVersion+$currentBuild';
+
   /// 表示用の文字列を作る（例: 1.0.7 (13)）。「+」は表示しない。
   static String displayVersion(String version, int? build) =>
       build == null ? version : '$version ($build)';

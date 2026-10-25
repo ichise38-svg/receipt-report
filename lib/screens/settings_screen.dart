@@ -136,7 +136,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final info = kIsWeb
           ? await WebUpdateChecker.check(
               appBase: Uri.base,
-              currentVersion: UpdateChecker.currentFull,
+              currentVersion: UpdateChecker.currentCompare,
             )
           : await UpdateChecker.check();
       if (!mounted) return;

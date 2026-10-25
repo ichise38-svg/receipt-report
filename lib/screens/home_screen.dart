@@ -95,7 +95,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (kIsWeb) {
         final info = await WebUpdateChecker.check(
           appBase: Uri.base,
-          currentVersion: UpdateChecker.currentFull,
+          currentVersion: UpdateChecker.currentCompare,
         );
         if (info == null) return;
         await AppSettings.saveLatestVersion(info.latestVersion);
