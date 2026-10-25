@@ -64,6 +64,12 @@ function doPost(e) {
     if (data.ping) {
       return json_({ ok: true, message: 'pong' });
     }
+    if (data.action === 'bug') {
+      // 不具合報告は同期とは別の経路。同期データには触れない
+      lock.waitLock(30000);
+      locked = true;
+      return json_(bugReports_(data));
+    }
     if (data.action !== 'sync') {
       return json_({ ok: false, error: 'unknown action' });
     }
@@ -471,4 +477,77 @@ function getNamedFolder_(name) {
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * 不具合報告の受け口。管理用スプレッドシートの「bug_reports」に追記する。
+ * 同じ内容（key）は既存行の件数・最終発生日時を更新し、重複行を作らない。
+ * 90日より古い行は受信時に削除する。
+ */
+const BUG_HEADERS = ['key', 'version', 'build', 'platform', 'screen', 'kind', 'message', 'stack', 'count', 'first', 'last', 'updated'];
+const BUG_RETENTION_DAYS = 90;
+
+function bugReports_(data) {
+  const reports = Array.isArray(data.reports) ? data.reports : [];
+  if (reports.length > 50) {
+    return { ok: false, error: 'too many reports' };
+  }
+  // 版と端末は送信側の app（リクエスト単位）から取る
+  const app = data.app || {};
+  const appVersion = String(app.version || '');
+  const appBuild = String(app.build || '');
+  const appPlatform = String(app.platform || '');
+  const sheet = getSheet_('bug_reports', BUG_HEADERS);
+  const rows = sheet.getLastRow() > 1
+    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, BUG_HEADERS.length).getValues()
+    : [];
+  const index = {};
+  rows.forEach(function (row, i) { index[String(row[0])] = i + 2; });
+
+  const now = new Date().toISOString();
+  let added = 0;
+  let updated = 0;
+  reports.forEach(function (r) {
+    // 送信側の sig（種類＋先頭スタック＋伏せ字メッセージ）を同一性のキーにする
+    const key = String(r.sig || [r.kind, r.message].map(String).join('|')).slice(0, 300);
+    const values = [
+      key,
+      appVersion,
+      appBuild,
+      appPlatform,
+      String(r.screen || ''),
+      String(r.kind || ''),
+      String(r.message || '').slice(0, 200),
+      String((r.stack || []).join ? (r.stack || []).join('\n') : r.stack || '').slice(0, 1000),
+      Number(r.count) || 1,
+      String(r.first || ''),
+      String(r.last || ''),
+      now,
+    ];
+    if (index[key]) {
+      const rowNo = index[key];
+      const prevCount = Number(sheet.getRange(rowNo, 9).getValue()) || 0;
+      const prevLast = String(sheet.getRange(rowNo, 11).getValue());
+      // 同じ端末からの再送で件数が増えないよう、大きい方の値を採用
+      values[8] = Math.max(prevCount, Number(r.count) || 1);
+      values[10] = prevLast > String(r.last || '') ? prevLast : String(r.last || '');
+      sheet.getRange(rowNo, 1, 1, BUG_HEADERS.length).setValues([values]);
+      updated++;
+    } else {
+      sheet.appendRow(values);
+      index[key] = sheet.getLastRow();
+      added++;
+    }
+  });
+
+  // 保存期間を過ぎた行を削除（下から削除して行番号のずれを防ぐ）
+  const limit = new Date(Date.now() - BUG_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    const upd = sheet.getRange(2, BUG_HEADERS.length, lastRow - 1, 1).getValues();
+    for (let i = upd.length - 1; i >= 0; i--) {
+      if (String(upd[i][0]) < limit) sheet.deleteRow(i + 2);
+    }
+  }
+  return { ok: true, added: added, updated: updated };
 }

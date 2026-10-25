@@ -10,6 +10,7 @@ import '../models/member.dart';
 import '../services/app_settings.dart';
 import '../services/bank_reconcile.dart';
 import '../services/bank_store.dart';
+import '../services/bug_reporter.dart';
 import '../services/cloud_sync_service.dart';
 import '../models/receipt.dart';
 import '../services/ledger_summary.dart';
@@ -192,6 +193,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (last != null && DateTime.now().difference(last).inSeconds < 60) return;
     _lastAutoSync = DateTime.now();
     await _runSync(showMessage: false);
+    // 同期のついでに、未送信の不具合報告を送る（失敗しても次回に再送）
+    unawaited(BugReporter.flush());
   }
 
   /// 入力・編集・削除のあとに呼ぶ。数秒おいてまとめて自動同期する

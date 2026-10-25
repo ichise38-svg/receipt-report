@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../services/app_settings.dart';
+import '../services/bug_reporter.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/receipt_store.dart';
 import '../services/update_checker.dart';
@@ -22,11 +23,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _loading = true;
   bool _busy = false;
   bool _checkingUpdate = false;
+  bool _bugReportOn = BugReporter.enabled;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  Future<void> _toggleBugReport(bool value) async {
+    await BugReporter.setEnabled(value);
+    if (!mounted) return;
+    setState(() => _bugReportOn = value);
+    _snack(value ? '不具合の自動送信をオンにしました。' : '不具合の自動送信をオフにしました。');
   }
 
   @override
@@ -237,6 +246,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('不具合を自動で送信する'),
+                    subtitle: const Text(
+                      '操作中に起きたエラーの種類と画面名を、同期先に送って改善に役立てます。金額・店名・摘要・画像は送りません。',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    value: _bugReportOn,
+                    onChanged: _toggleBugReport,
+                  ),
+                  const SizedBox(height: 16),
                   Text(
                     '同期先（クラウド）',
                     style: Theme.of(context).textTheme.titleMedium,

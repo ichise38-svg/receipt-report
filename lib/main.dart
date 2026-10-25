@@ -3,11 +3,14 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'screens/home_screen.dart';
+import 'services/bug_reporter.dart';
 import 'widgets/adaptive_width_frame.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('ja');
+  // 不具合の自動収集を開始（エラーを端末に記録する）
+  await BugReporter.init();
   runApp(const ReceiptReportApp());
 }
 
