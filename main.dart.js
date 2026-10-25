@@ -133413,7 +133413,7 @@ s.qK()
 s.AI()
 s.qU()
 s.dx=B.b7Q(A.ab4,new B.aUj(s))},
-qU(){var s=0,r=B.x(t.H),q,p=2,o=[],n=[],m=this,l,k,j
+qU(){var s=0,r=B.x(t.H),q,p=2,o=[],n=[],m=this,l,k
 var $async$qU=B.y(function(a,b){if(a===1){o.push(b)
 s=p}while(true)switch(s){case 0:if(m.y){s=1
 break}k=m.z
@@ -133421,9 +133421,8 @@ if(k!=null&&new B.bd(Date.now(),0,!1).i5(k).a<18e8){s=1
 break}m.y=!0
 m.z=new B.bd(Date.now(),0,!1)
 p=3
-j=B.DU()
 s=6
-return B.p(B.a7u(j,"1.0.7 (13)"),$async$qU)
+return B.p(B.a7u(B.DU(),"1.0.7+13"),$async$qU)
 case 6:l=b
 if(l==null){n=[1]
 s=4
@@ -135145,13 +135144,12 @@ case 1:return B.v(q,r)}})
 return B.w($async$Fo,r)},
 aER(a){this.X(new B.b_P(this,a))
 this.kd("\u300c"+a.a+"\u300d\u306eURL\u3092\u5165\u529b\u3057\u307e\u3057\u305f\u3002\u4fdd\u5b58\u3092\u62bc\u3059\u3068\u53cd\u6620\u3055\u308c\u307e\u3059\u3002")},
-wv(){var s=0,r=B.x(t.H),q,p=2,o=[],n=[],m=this,l,k,j,i
+wv(){var s=0,r=B.x(t.H),q,p=2,o=[],n=[],m=this,l,k,j
 var $async$wv=B.y(function(a,b){if(a===1){o.push(b)
 s=p}while(true)switch(s){case 0:m.X(new B.b_I(m))
 p=4
-k=B.DU()
 s=7
-return B.p(B.a7u(k,"1.0.7 (13)"),$async$wv)
+return B.p(B.a7u(B.DU(),"1.0.7+13"),$async$wv)
 case 7:l=b
 if(m.c==null){n=[1]
 s=5
@@ -135171,7 +135169,7 @@ n.push(6)
 s=5
 break
 case 4:p=3
-i=o.pop()
+j=o.pop()
 if(m.c!=null)m.kd("\u78ba\u8a8d\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u901a\u4fe1\u72b6\u614b\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002")
 n.push(6)
 s=5
