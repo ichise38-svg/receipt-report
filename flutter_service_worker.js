@@ -16,11 +16,11 @@ const RESOURCES = {"canvaskit/chromium/canvaskit.js": "5e27aae346eee469027c80af0
 "canvaskit/skwasm_heavy.js.symbols": "3c01ec03b5de6d62c34e17014d1decd3",
 "canvaskit/skwasm_heavy.wasm": "8034ad26ba2485dab2fd49bdd786837b",
 "flutter.js": "888483df48293866f9f41d3d9274a779",
-"flutter_bootstrap.js": "903b2df32e90e94565399196234774e0",
+"flutter_bootstrap.js": "1d1fdd6c201a44ec06726df7b24865a1",
 "index.html": "09211ddabc840a5ab14ab93bf98cc427",
 "/": "09211ddabc840a5ab14ab93bf98cc427",
-"main.dart.js": "dfdac5ee47ef56df5027e760e2813738",
-"version.json": "b56b3366206d92af76ef47583973f935",
+"main.dart.js": "cf485b0ea8656bdbe4c637e092f8ff80",
+"version.json": "29f2530db3e578c62542128ef83620ca",
 "assets/packages/cupertino_icons/assets/CupertinoIcons.ttf": "33b7d9392238c04c131b6ce224e13711",
 "assets/fonts/MaterialIcons-Regular.otf": "f2835ce7265837379ca36a21df220190",
 "assets/shaders/ink_sparkle.frag": "ecc85a2e95f5e9f53123dcaf8cb9b6ce",
@@ -36,7 +36,10 @@ const RESOURCES = {"canvaskit/chromium/canvaskit.js": "5e27aae346eee469027c80af0
 "icons/apple-touch-icon.png": "8cf7d03c02201f01fcf29dc68ebb679b",
 "favicon.png": "eff053d2795ccebbb8b3c51a82621dc0",
 "manifest.json": "afd321257789c090cb2a867e9c3366e4",
-"android.html": "c3432d76c5a5ac8b076350497524f9df"};
+"android.html": "7cdf39fcf2091dcec9df4a0c84e8d6e8",
+"downloads/android_install_guide.pdf": "543a2fe8e85003a241609ab63978af41",
+"downloads/receipt-report-guide.pdf": "0647731fa4bec16139c0c9a4890916ad",
+"downloads/receipt-report-links.pdf": "3e63399fd6edf25d594275f1e984ce83"};
 // The application shell files that are downloaded before a service worker can
 // start.
 const CORE = ["main.dart.js",
