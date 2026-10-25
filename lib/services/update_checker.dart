@@ -30,7 +30,11 @@ class UpdateChecker {
   static const currentBuild = 13;
 
   /// 版番号とビルド番号を並べた表示用の値（例: 1.0.4+6）
-  static String get currentFull => '$currentVersion+$currentBuild';
+  static String get currentFull => displayVersion(currentVersion, currentBuild);
+
+  /// 表示用の文字列を作る（例: 1.0.7 (13)）。「+」は表示しない。
+  static String displayVersion(String version, int? build) =>
+      build == null ? version : '$version ($build)';
 
   static const _releaseApi =
       'https://api.github.com/repos/ichise38-svg/receipt-report/releases/tags/android-latest';
@@ -58,8 +62,8 @@ class UpdateChecker {
         return null;
       }
       return UpdateInfo(
-        latestVersion: latestBuild == null ? latest : '$latest+$latestBuild',
-        currentVersion: '$current+$currentBuild',
+        latestVersion: displayVersion(latest, latestBuild),
+        currentVersion: displayVersion(current, currentBuild),
         downloadUrl: downloadPageUrl,
       );
     } catch (_) {

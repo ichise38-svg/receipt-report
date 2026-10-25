@@ -15,10 +15,11 @@ void main() {
     expect(UpdateChecker.compareFull('1.0.5', 1, '1.0.4', 9), greaterThan(0));
   });
 
-  test('currentFull は 1.0.4+6 の形式', () {
+  test('currentFull は「1.0.7 (13)」の形式（+は表示しない）', () {
     expect(
       UpdateChecker.currentFull,
-      '${UpdateChecker.currentVersion}+${UpdateChecker.currentBuild}',
+      '${UpdateChecker.currentVersion} (${UpdateChecker.currentBuild})',
     );
+    expect(UpdateChecker.currentFull.contains('+'), isFalse);
   });
 }

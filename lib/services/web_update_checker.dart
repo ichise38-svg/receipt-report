@@ -85,7 +85,7 @@ class WebUpdateChecker {
         return null;
       }
       return UpdateInfo(
-        latestVersion: latestBuild == null ? latest : '$latest+$latestBuild',
+        latestVersion: UpdateChecker.displayVersion(latest, latestBuild),
         currentVersion: currentVersion,
         downloadUrl: appBase.toString(),
       );
