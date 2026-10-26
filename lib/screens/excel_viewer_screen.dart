@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
 import '../models/receipt.dart';
@@ -65,10 +66,36 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
   double? _pinchStartDist;
   double _pinchStartZoom = 1.0;
 
+  /// 横向きで全画面を開いたかどうか（回転の繰り返しで二重に開かないため）
+  bool _autoOpenedLandscape = false;
+  bool _openingFullScreen = false;
+
   @override
   void initState() {
     super.initState();
+    if (!widget.embedded) {
+      // 全画面のExcel画面は横向きも許可する（戻るときに縦へ戻す）
+      SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+    }
     _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!widget.embedded) return;
+    final landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    if (landscape && !_autoOpenedLandscape && !_openingFullScreen) {
+      _autoOpenedLandscape = true;
+      _openingFullScreen = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openingFullScreen = false;
+        if (mounted) _openFullScreen();
+      });
+    } else if (!landscape) {
+      _autoOpenedLandscape = false;
+    }
   }
 
   @override
@@ -79,6 +106,10 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
 
   @override
   void dispose() {
+    if (!widget.embedded) {
+      // 全画面を閉じたら、アプリ既定の向き設定（全方向）に戻す
+      SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+    }
     _carryCashCtrl.dispose();
     _carryBankCtrl.dispose();
     _hScroll.dispose();
