@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
+import '../models/member.dart';
 import '../models/receipt.dart';
 import '../services/app_settings.dart';
 import '../services/event_excel_service.dart';
@@ -49,7 +50,17 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
   bool _loading = true;
   List<LayoutRow> _rows = [];
   String _mainTitle = AppSettings.defaultMainTitle;
-  int _participants = 0;
+  // 年間＝登録メンバー数、イベント別＝選択中イベントの出席者数
+  int _registeredCount = 0;
+  List<Member> _roster = [];
+  int get _participants => _mode == _ViewMode.annual
+      ? _registeredCount
+      : _eventAttendees;
+  int get _eventAttendees {
+    final name = _eventName;
+    if (name == null) return 0;
+    return _roster.where((m) => m.attendsEvent(name)).length;
+  }
   // 年間報告の対象期間（既定は今年の 1/1〜12/31 で完結）
   late DateTime _periodFrom = DateTime(DateTime.now().year, 1, 1);
   late DateTime _periodTo = DateTime(DateTime.now().year, 12, 31);
@@ -128,7 +139,8 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
       _mainTitle = title;
       _carryCashCtrl.text = '${carry.cash}';
       _carryBankCtrl.text = '${carry.bank}';
-      _participants = members.length;
+      _registeredCount = members.length;
+      _roster = members;
       _loading = false;
       _entries = entries;
       _eventNames = names;
@@ -340,7 +352,7 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
                     DropdownMenuItem(value: e, child: Text(e)),
                 ],
                 onChanged: (v) {
-                  _eventName = v;
+                  setState(() => _eventName = v);
                   _rebuild(_entries);
                 },
               ),
@@ -408,8 +420,8 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
           ],
           const SizedBox(height: 4),
           Text(
-            '左上（A1）：$_mainTitle（$_participants名）'
-            '${annual ? '' : '\nA2：${_eventName ?? '-'}　会計報告書'}',
+            '左上（A1）：$_mainTitle'
+            '${annual ? '（登録$_registeredCount名）' : '\nA2：${_eventName ?? '-'}　会計報告書（出席$_participants名）'}',
             style: const TextStyle(fontSize: 12),
           ),
         ],

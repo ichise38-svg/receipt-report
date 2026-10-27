@@ -459,9 +459,9 @@ class EventLayout {
     row += 2;
 
     // ---- 参加者 ----
-    add('participants', '参加者（名）', [
-      t(0, '参加者（名）'),
-      n(1, participants, role: 'B列＝登録されている参加者数'),
+    add('participants', '出席者（名）', [
+      t(0, '出席者（名）'),
+      n(1, participants, role: 'B列＝このイベントに出席した人数'),
     ]);
 
     return rows;

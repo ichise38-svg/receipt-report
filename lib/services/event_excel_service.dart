@@ -177,7 +177,7 @@ class EventExcelService {
     );
     row += 2;
 
-    text(0, row, '参加者（名）');
+    text(0, row, '出席者（名）');
     num(1, row, participants, style: money);
     row += 1;
     if (participantNames.isNotEmpty) {
