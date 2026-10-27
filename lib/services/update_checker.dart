@@ -24,10 +24,10 @@ class UpdateInfo {
 /// 失敗（オフライン・未設定など）は黙って null を返し、アプリの動作は止めない。
 class UpdateChecker {
   /// このアプリのバージョン（pubspec.yaml の version と必ず合わせる）
-  static const currentVersion = '1.0.10';
+  static const currentVersion = '1.0.11';
 
   /// このアプリのビルド番号（pubspec.yaml の +の後ろと必ず合わせる）
-  static const currentBuild = 16;
+  static const currentBuild = 17;
 
   /// 版番号とビルド番号を並べた表示用の値（例: 1.0.4+6）
   static String get currentFull => displayVersion(currentVersion, currentBuild);
