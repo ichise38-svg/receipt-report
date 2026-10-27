@@ -108,7 +108,7 @@ class _MemberScreenState extends State<MemberScreen> {
       final ext = (file.extension ?? '').toLowerCase();
       final List<String> names;
       if (ext == 'xlsx') {
-        names = MemberImport.parseXlsx(bytes);
+        names = MemberImport.parseXlsxNames(bytes);
       } else {
         final text = _decodeUtf8(bytes);
         if (text == null) {
