@@ -124,9 +124,19 @@ class AppSettings {
     return compareVersionStrings(latest, currentVersion) > 0;
   }
 
+  /// 表示用の「1.0.10 (16)」を「1.0.10+16」に直す（比較は「+」形式で行う）
+  static String _normalizeVersion(String v) => v
+      .trim()
+      .replaceFirstMapped(
+        RegExp(r'\s*\((\d+)\)$'),
+        (m) => '+${m.group(1)}',
+      );
+
   /// 版番号の比較（1.0.3 と 1.0.2 など）。a > b なら正。
   /// 版番号が同じなら「+」の後のビルド番号（1.0.4+6 と 1.0.4+5 など）で比べる。
   static int compareVersionStrings(String a, String b) {
+    a = _normalizeVersion(a);
+    b = _normalizeVersion(b);
     List<int> parts(String v) => v
         .split('+')
         .first

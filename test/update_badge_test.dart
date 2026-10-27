@@ -37,6 +37,21 @@ void main() {
 }
 
 void buildNumberTests() {
+  test('表示形式「1.0.10 (16)」でも新旧を正しく比べる（iPhoneのバッジ不具合）', () async {
+    expect(
+      AppSettings.compareVersionStrings('1.0.10 (16)', '1.0.9 (15)'),
+      greaterThan(0),
+    );
+    expect(
+      AppSettings.compareVersionStrings('1.0.10 (16)', '1.0.10+16'),
+      0,
+    );
+    SharedPreferences.setMockInitialValues({});
+    await AppSettings.saveLatestVersion('1.0.10 (16)');
+    expect(await AppSettings.hasNewerVersion('1.0.9+15'), isTrue);
+    expect(await AppSettings.hasNewerVersion('1.0.10+16'), isFalse);
+  });
+
   test('同じ版番号でもビルド番号が新しければ新しい版（1.0.4+7 > 1.0.4+6）', () {
     expect(
       AppSettings.compareVersionStrings('1.0.4+7', '1.0.4+6'),
