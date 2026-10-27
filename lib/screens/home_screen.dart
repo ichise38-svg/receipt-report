@@ -176,12 +176,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// 過去の取り込み不具合で入った日付不明（1970年）の明細を、一度だけ削除して同期する
   Future<void> _purgeEpochOnce() async {
     final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('purged_epoch_v1') == true) return;
-    final count = await ReceiptStore.purgeEpochDated();
-    await prefs.setBool('purged_epoch_v1', true);
-    if (count > 0 && mounted) {
-      _reload();
-      _scheduleSync();
+    if (prefs.getBool('purged_epoch_v1') != true) {
+      final count = await ReceiptStore.purgeEpochDated();
+      await prefs.setBool('purged_epoch_v1', true);
+      if (count > 0 && mounted) {
+        _reload();
+        _scheduleSync();
+      }
+    }
+    // 名簿の同じ人の重複を一度だけ整理（以後は設定画面から手動で実行）
+    if (prefs.getBool('members_dedupe_v1') != true) {
+      final merged = await MemberStore.mergeDuplicates();
+      await prefs.setBool('members_dedupe_v1', true);
+      if (merged > 0 && mounted) {
+        _reload();
+        _scheduleSync();
+      }
     }
   }
 

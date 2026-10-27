@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../services/app_settings.dart';
 import '../services/bug_reporter.dart';
 import '../services/cloud_sync_service.dart';
+import '../services/member_dedupe.dart';
+import '../services/member_store.dart';
 import '../services/receipt_store.dart';
 import '../services/update_checker.dart';
 import '../services/web_update_checker.dart';
@@ -130,6 +132,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   /// 設定画面の「更新を確認」: 結果をその場で伝える（Android・Web 共通）
+  /// 名簿の重複を整理する（件数を示して確認してから実行）
+  Future<void> _confirmMergeMembers() async {
+    final members = await MemberStore.loadAll();
+    final plan = MemberDedupe.plan(members);
+    if (!mounted) return;
+    if (plan.removeCount == 0) {
+      _snack('重複している会員はありません。');
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('重複を整理しますか？'),
+        content: Text(
+          '同じ人が ${plan.removeCount} 件重複しています。\n'
+          '${plan.groupCount} 人の会員に まとめます（会員数は ${members.length} → ${members.length - plan.removeCount} 名）。\n'
+          '出席の記録は統合されます。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('やめる'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('まとめる'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final n = await MemberStore.mergeDuplicates();
+    _snack('$n 件の重複をまとめました。');
+  }
+
   Future<void> _manualUpdateCheck() async {
     setState(() => _checkingUpdate = true);
     try {
@@ -244,6 +281,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       helperText: 'イベント別の報告書では、この下にイベント名のタイトルを表示します。',
                       border: OutlineInputBorder(),
                     ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    '参加者名簿',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 4),
+                  OutlinedButton.icon(
+                    onPressed: _confirmMergeMembers,
+                    icon: const Icon(Icons.merge_type),
+                    label: const Text('同じ会員の重複を1件にまとめる'),
                   ),
                   const SizedBox(height: 24),
                   SwitchListTile(
