@@ -51,6 +51,14 @@ class LedgerImportPreview {
   /// 既存の口座出納と同じ内容のため無視した件数
   final int bankDuplicateCount;
 
+  /// 集金の入金の候補（摘要に「集金」「月分」を含む入金）の件数
+  int get collectionCandidateCount => bankToAdd
+      .where((b) => b.kind == BankEntryKind.deposit && _isCandidate(b.label))
+      .length;
+
+  static bool _isCandidate(String label) =>
+      label.contains('集金') || label.contains('月分');
+
   const LedgerImportPreview({
     required this.sheetName,
     required this.toAdd,
@@ -272,6 +280,8 @@ class LedgerFileService {
 
     // ATM入出金（口座出納）
     final bank = _readBank(rows, cols, yearHint, existingBank);
+    // 集金の入金の判定（摘要の月と同じ月の現金収入の合計が一致した入金だけ「集金」にする）
+    final bankEntries = _markCollections(bank.toAdd, toAdd);
 
     return LedgerImportPreview(
       sheetName: found.name,
@@ -286,9 +296,50 @@ class LedgerFileService {
       carryBank: carry.bank,
       carryReason: carry.reason,
       yearMismatchCount: yearMismatch,
-      bankToAdd: bank.toAdd,
+      bankToAdd: bankEntries,
       bankDuplicateCount: bank.duplicates,
     );
+  }
+
+  /// 「○月分集金」などの入金に集金フラグを付ける
+  ///
+  /// 候補: 摘要に「集金」か「月分」を含む入金。
+  /// 判定: 摘要の月（「○月」）と同じ月の現金収入の合計が入金額と一致したものだけ true。
+  /// 一致しない候補は false のまま（取り込み確認で手動により切り替える）。
+  static List<BankEntry> _markCollections(
+    List<BankEntry> entries,
+    List<Receipt> receipts,
+  ) {
+    final cashIncomeByMonth = <int, int>{};
+    for (final r in receipts) {
+      if (!r.isIncome || r.payment != PaymentMethod.cash || r.deleted) continue;
+      cashIncomeByMonth[r.date.month] =
+          (cashIncomeByMonth[r.date.month] ?? 0) + r.amount;
+    }
+    final monthRe = RegExp(r'(\d{1,2})\s*月');
+    return [
+      for (final b in entries)
+        if (b.kind == BankEntryKind.deposit &&
+            LedgerImportPreview._isCandidate(b.label))
+          b.copyWith(
+            collection: _matchesMonthlyCash(b, monthRe, cashIncomeByMonth),
+          )
+        else
+          b,
+    ];
+  }
+
+  static bool _matchesMonthlyCash(
+    BankEntry b,
+    RegExp monthRe,
+    Map<int, int> cashIncomeByMonth,
+  ) {
+    final m = monthRe.firstMatch(b.label);
+    if (m == null) return false;
+    final month = int.tryParse(m.group(1)!);
+    if (month == null) return false;
+    final total = cashIncomeByMonth[month];
+    return total != null && total == b.amount;
   }
 
   /// 繰越金（前年度）を読み取る。
@@ -798,7 +849,9 @@ class LedgerFileService {
       final label = _text(row, labelCol);
       final dateText = _text(row, dateCol);
       // 合計や次の見出しに来たら口座出納の終わり
-      if (label.contains('合計') || label.contains('口座+') || label.contains('残高の')) {
+      if (label.contains('合計') ||
+          label.contains('口座+') ||
+          label.contains('残高の')) {
         break;
       }
       final deposit = _amount(row, depositCol);
@@ -809,13 +862,11 @@ class LedgerFileService {
       final memo = memoCol >= 0 ? _text(row, memoCol) : '';
       final name = label.isEmpty ? (memo.isEmpty ? '（摘要なし）' : memo) : label;
       if (parsed == null) {
-        skipped.add(
-          '口座出納${r + 1}行目「$name」: 日付を読み取れません（月日「$dateText」）',
-        );
+        skipped.add('口座出納${r + 1}行目「$name」: 日付を読み取れません（月日「$dateText」）');
         continue;
       }
-      final isCashOut = '$label $memo'.contains('引出') ||
-          '$label $memo'.contains('カード');
+      final isCashOut =
+          '$label $memo'.contains('引出') || '$label $memo'.contains('カード');
 
       final sides = <(BankEntryKind, int)>[
         if (deposit > 0) (BankEntryKind.deposit, deposit),

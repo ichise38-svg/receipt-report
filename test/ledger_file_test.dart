@@ -4,6 +4,7 @@ import 'package:excel/excel.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:receipt_report/models/bank_entry.dart';
 import 'package:receipt_report/models/receipt.dart';
+import 'package:receipt_report/services/bank_reconcile.dart';
 import 'package:receipt_report/services/ledger_file_service.dart';
 
 /// テスト用：年間集計の形式（見出し 月日・摘要・収入・支出・収支・残高・備考）のExcelを作る
@@ -38,6 +39,7 @@ Uint8List _annualSample(List<List<Object?>> rows, {String sheet = '2025年集計
 
 void main() {
   bankTests();
+  collectionTests();
   test('年間集計の収入・支出を取り込み、繰越行は除外する', () {
     final bytes = _annualSample([
       [null, '前年度繰越金（現金）', 146353, null, null, null, null],
@@ -198,10 +200,7 @@ void main() {
 
 /// 年間集計の下に ATM入出金 の見出しと明細を付けたExcelを作る
 /// bank: [月日(int serial/null), 摘要, 入金, 出金, 備考]
-Uint8List _annualWithBank(
-  List<List<Object?>> rows,
-  List<List<Object?>> bank,
-) {
+Uint8List _annualWithBank(List<List<Object?>> rows, List<List<Object?>> bank) {
   final excel = Excel.createExcel();
   final s = excel['2025年集計'];
   excel.delete('Sheet1');
@@ -259,13 +258,10 @@ void bankTests() {
   });
 
   test('既存の口座出納と同じ内容は重複として無視する', () {
-    final bytes = _annualWithBank(
-      [],
-      [
-        [45700, '1月集金', 50000, null, null, null, null],
-        [45710, '振込手数料', null, 330, null, null, null],
-      ],
-    );
+    final bytes = _annualWithBank([], [
+      [45700, '1月集金', 50000, null, null, null, null],
+      [45710, '振込手数料', null, 330, null, null, null],
+    ]);
     final first = LedgerFileService.parseAnnual(bytes, const []);
     final again = LedgerFileService.parseAnnual(
       bytes,
@@ -283,5 +279,59 @@ void bankTests() {
     final p = LedgerFileService.parseAnnual(bytes, const []);
     expect(p.bankToAdd, isEmpty);
     expect(p.bankDuplicateCount, 0);
+  });
+}
+
+void collectionTests() {
+  test('集金の入金は、同じ月の現金収入の合計と一致すると集金に判定する', () {
+    final bytes = _annualWithBank(
+      [
+        [45800, '5月集金', 30000, null, null, null, null],
+        [45801, '5月集金', 20000, null, null, null, null],
+      ],
+      [
+        [45800, '5月分集金', 50000, null, null, null, null],
+        [45810, '6月分集金', 12345, null, null, null, null],
+      ],
+    );
+    final p = LedgerFileService.parseAnnual(bytes, const []);
+    final dep = p.bankToAdd
+        .where((b) => b.kind == BankEntryKind.deposit)
+        .toList();
+    expect(dep.length, 2);
+    expect(dep[0].label.contains('5月'), isTrue);
+    expect(dep[0].collection, isTrue);
+    expect(dep[1].collection, isFalse);
+    expect(p.collectionCandidateCount, 2);
+  });
+
+  test('集金の入金は残高計算で手持ち現金から口座へ移り、合計は変わらない', () {
+    final bank = [
+      BankEntry(
+        date: DateTime(2025, 5, 10),
+        kind: BankEntryKind.deposit,
+        label: '5月分集金',
+        amount: 50000,
+        collection: true,
+      ),
+    ];
+    final receipts = [
+      Receipt(
+        kind: EntryKind.income,
+        storeName: '5月集金',
+        date: DateTime(2025, 5, 1),
+        amount: 50000,
+        category: '会費',
+      ),
+    ];
+    final b = BankReconcile.balances(
+      carryCash: 0,
+      carryBank: 0,
+      bankEntries: bank,
+      receipts: receipts,
+    );
+    expect(b.bank, 50000);
+    expect(b.cashOnHand, 0);
+    expect(b.bank + b.cashOnHand, 50000);
   });
 }

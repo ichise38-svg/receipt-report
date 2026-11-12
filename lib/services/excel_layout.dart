@@ -523,11 +523,7 @@ class BankLayout {
       final isDeposit = e.kind == BankEntryKind.deposit;
       balance += e.balanceDelta;
       final cells = <LayoutCell>[
-        LayoutCell(
-          col: 0,
-          row: row,
-          text: AnnualLayout._fmtDate(e.date),
-        ),
+        LayoutCell(col: 0, row: row, text: AnnualLayout._fmtDate(e.date)),
         LayoutCell(col: 1, row: row, text: e.label),
         if (isDeposit) LayoutCell(col: 2, row: row, amount: e.amount),
         if (!isDeposit) LayoutCell(col: 3, row: row, amount: e.amount),
@@ -540,6 +536,7 @@ class BankLayout {
         ),
         if (e.kind == BankEntryKind.cashOut)
           LayoutCell(col: 6, row: row, text: '現金引出'),
+        if (e.collection) LayoutCell(col: 6, row: row, text: '集金の入金（現金→口座）'),
       ];
       rows.add(
         LayoutRow(

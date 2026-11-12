@@ -182,8 +182,13 @@ class BankReconcile {
     var bankTotal = carryBank;
     var cashTotal = carryCash;
     for (final b in bankEntries) {
+      if (b.deleted) continue;
       bankTotal += b.balanceDelta;
       if (b.kind == BankEntryKind.cashOut) cashTotal += b.amount;
+      // 集金の入金は現金を口座へ移したもの：現金を減らし、口座は入金どおり増やす
+      if (b.collection && b.kind == BankEntryKind.deposit) {
+        cashTotal -= b.amount;
+      }
     }
     for (final r in receipts) {
       if (r.deleted || r.payment != PaymentMethod.cash) continue;

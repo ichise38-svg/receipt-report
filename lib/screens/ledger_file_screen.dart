@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../models/bank_entry.dart';
 import '../services/app_settings.dart';
 import '../services/bank_store.dart';
 import '../services/cloud_sync_service.dart';
@@ -21,6 +22,7 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
   bool _busy = false;
   bool _updateCarry = true;
   final _currency = NumberFormat('#,##0', 'ja_JP');
+  final _dateFmt = DateFormat('M/d');
   List<String> _skipped = [];
 
   @override
@@ -111,7 +113,7 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
     setState(() => _busy = true);
     try {
       await ReceiptStore.addAll(preview.toAdd);
-      for (final b in preview.bankToAdd) {
+      for (final b in _bankResult(preview)) {
         await BankStore.upsert(b);
       }
       await AppSettings.setImportSkipped(preview.skippedReasons);
@@ -136,7 +138,25 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
     }
   }
 
+  /// 集金の判定を画面で切り替えた結果を反映した口座出納
+  List<BankEntry> _bankResult(LedgerImportPreview p) {
+    return [
+      for (final b in p.bankToAdd)
+        if (_collectionOverride.containsKey(_bankRowKey(b)))
+          b.copyWith(collection: _collectionOverride[_bankRowKey(b)])
+        else
+          b,
+    ];
+  }
+
+  String _bankRowKey(BankEntry b) =>
+      '${b.kind.name}|${b.date.toIso8601String()}|${b.label}|${b.amount}';
+
+  /// 集金の候補ごとのチェックの状態（キーは _bankRowKey）
+  final Map<String, bool> _collectionOverride = {};
+
   Future<bool?> _confirm(LedgerImportPreview p) {
+    _collectionOverride.clear();
     final nothing = p.toAdd.isEmpty && p.bankToAdd.isEmpty && !p.hasCarry;
     return showDialog<bool>(
       context: context,
@@ -200,6 +220,35 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
                 ),
                 if (p.bankDuplicateCount > 0)
                   Text('口座出納の重複のため無視: ${p.bankDuplicateCount}件'),
+                if (p.collectionCandidateCount > 0) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '集金の入金の候補（チェックを入れると「集金の入金」として扱い、手持ち現金から口座へ移します）',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                  for (final b in p.bankToAdd.where(
+                    (b) =>
+                        b.kind == BankEntryKind.deposit &&
+                        (b.label.contains('集金') || b.label.contains('月分')),
+                  ))
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: Text(
+                        '${_dateFmt.format(b.date)}　${b.label}　¥${_currency.format(b.amount)}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      value:
+                          _collectionOverride[_bankRowKey(b)] ?? b.collection,
+                      onChanged: (v) => setDialog(
+                        () => _collectionOverride[_bankRowKey(b)] = v ?? false,
+                      ),
+                    ),
+                ],
                 Text('繰越金行（報告書画面で入力）: ${p.carrySkipped}件'),
                 if (p.needsCheckCount > 0)
                   Text(

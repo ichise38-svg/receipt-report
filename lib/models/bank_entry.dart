@@ -40,6 +40,10 @@ class BankEntry {
   final DateTime updatedAt;
   final bool deleted;
 
+  /// 集金の入金（現金で集めた会費を口座へ入れたもの）。
+  /// true のとき、手持ち現金から口座へ移した扱いになる（合計残高は変わらない）。
+  final bool collection;
+
   BankEntry({
     String? id,
     required this.date,
@@ -48,6 +52,7 @@ class BankEntry {
     required this.amount,
     DateTime? updatedAt,
     this.deleted = false,
+    this.collection = false,
   }) : id = id ?? const Uuid().v4(),
        updatedAt = updatedAt ?? DateTime.now();
 
@@ -61,6 +66,7 @@ class BankEntry {
     int? amount,
     DateTime? updatedAt,
     bool? deleted,
+    bool? collection,
   }) {
     return BankEntry(
       id: id,
@@ -70,6 +76,7 @@ class BankEntry {
       amount: amount ?? this.amount,
       updatedAt: updatedAt ?? this.updatedAt,
       deleted: deleted ?? this.deleted,
+      collection: collection ?? this.collection,
     );
   }
 
@@ -81,6 +88,7 @@ class BankEntry {
     'amount': amount,
     'updatedAt': isoMillis(updatedAt),
     'deleted': deleted,
+    'collection': collection,
   };
 
   factory BankEntry.fromJson(Map<String, dynamic> json) {
@@ -94,6 +102,7 @@ class BankEntry {
       amount: (json['amount'] as num?)?.toInt() ?? 0,
       updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? '') ?? date,
       deleted: json['deleted'] as bool? ?? false,
+      collection: json['collection'] as bool? ?? false,
     );
   }
 }
