@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../services/app_settings.dart';
+import '../services/bank_store.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/ledger_file_service.dart';
 import '../services/receipt_store.dart';
@@ -85,7 +86,12 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
         }
       }
       final existing = await ReceiptStore.loadRaw();
-      preview = LedgerFileService.parseAnnual(bytes, existing);
+      final existingBank = await BankStore.loadRaw();
+      preview = LedgerFileService.parseAnnual(
+        bytes,
+        existing,
+        existingBank: existingBank,
+      );
     } on FormatException catch (e) {
       _toast(e.message);
       if (mounted) setState(() => _busy = false);
@@ -105,6 +111,9 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
     setState(() => _busy = true);
     try {
       await ReceiptStore.addAll(preview.toAdd);
+      for (final b in preview.bankToAdd) {
+        await BankStore.upsert(b);
+      }
       await AppSettings.setImportSkipped(preview.skippedReasons);
       await _loadSkipped();
       var carryMsg = '';
@@ -115,7 +124,10 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
         );
         carryMsg = '（繰越金も更新しました）';
       }
-      _toast('${preview.toAdd.length}件を取り込みました。$carryMsg');
+      final bankMsg = preview.bankToAdd.isEmpty
+          ? ''
+          : '口座出納${preview.bankToAdd.length}件を含みます。';
+      _toast('${preview.toAdd.length}件を取り込みました。$bankMsg$carryMsg');
       if (mounted) Navigator.of(context).pop(true);
     } catch (_) {
       _toast('保存できませんでした。');
@@ -125,7 +137,7 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
   }
 
   Future<bool?> _confirm(LedgerImportPreview p) {
-    final nothing = p.toAdd.isEmpty && !p.hasCarry;
+    final nothing = p.toAdd.isEmpty && p.bankToAdd.isEmpty && !p.hasCarry;
     return showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -177,6 +189,17 @@ class _LedgerFileScreenState extends State<LedgerFileScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text('重複のため無視: ${p.duplicateCount}件'),
+                const SizedBox(height: 8),
+                Text(
+                  '口座出納（ATM入出金）: ${p.bankToAdd.length}件を追加',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  '　入金 ¥${_currency.format(p.bankDeposit)} / '
+                  '出金 ¥${_currency.format(p.bankWithdraw)}',
+                ),
+                if (p.bankDuplicateCount > 0)
+                  Text('口座出納の重複のため無視: ${p.bankDuplicateCount}件'),
                 Text('繰越金行（報告書画面で入力）: ${p.carrySkipped}件'),
                 if (p.needsCheckCount > 0)
                   Text(

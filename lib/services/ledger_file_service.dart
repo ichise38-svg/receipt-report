@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../models/bank_entry.dart';
 import '../models/receipt.dart';
 import 'xlsx_cached.dart';
 import 'xlsx_reader.dart';
@@ -44,6 +45,12 @@ class LedgerImportPreview {
   /// 年間集計の残高（Excelの計算値）と端末の計算の差を確認するための値
   final int? excelBalanceEnd;
 
+  /// 取り込む口座出納（ATM入出金）。既存と同じ内容は含まない
+  final List<BankEntry> bankToAdd;
+
+  /// 既存の口座出納と同じ内容のため無視した件数
+  final int bankDuplicateCount;
+
   const LedgerImportPreview({
     required this.sheetName,
     required this.toAdd,
@@ -57,6 +64,8 @@ class LedgerImportPreview {
     this.yearMismatchCount = 0,
     this.eventReplaced = const [],
     this.excelBalanceEnd,
+    this.bankToAdd = const [],
+    this.bankDuplicateCount = 0,
   });
 
   bool get hasCarry => carryCash != null && carryBank != null;
@@ -67,6 +76,16 @@ class LedgerImportPreview {
       toAdd.where((r) => r.isIncome).fold(0, (s, r) => s + r.amount);
   int get expenseTotal =>
       toAdd.where((r) => !r.isIncome).fold(0, (s, r) => s + r.amount);
+
+  /// 口座出納の入金合計（現金引出は含まない）
+  int get bankDeposit => bankToAdd
+      .where((b) => b.kind == BankEntryKind.deposit)
+      .fold(0, (s, b) => s + b.amount);
+
+  /// 口座出納の出金合計（現金引出は含まない）
+  int get bankWithdraw => bankToAdd
+      .where((b) => b.kind == BankEntryKind.withdraw)
+      .fold(0, (s, b) => s + b.amount);
 }
 
 /// 年間収支の Excel 取り込みと、取り込み用テンプレートの作成
@@ -79,8 +98,9 @@ class LedgerFileService {
   /// 取り込み（重複は無視する）。既存データは削除済みを除いた一覧を渡す。
   static LedgerImportPreview parseAnnual(
     Uint8List bytes,
-    List<Receipt> existing,
-  ) {
+    List<Receipt> existing, {
+    List<BankEntry> existingBank = const [],
+  }) {
     final Excel book;
     try {
       book = XlsxReader.decode(bytes);
@@ -250,6 +270,9 @@ class LedgerFileService {
     // 年間集計の残高（Excelの計算値）。端末の計算と比べるための参考値
     final balanceEnd = _lastBalance(found.name, cached, rows, cols);
 
+    // ATM入出金（口座出納）
+    final bank = _readBank(rows, cols, yearHint, existingBank);
+
     return LedgerImportPreview(
       sheetName: found.name,
       toAdd: toAdd,
@@ -258,11 +281,13 @@ class LedgerFileService {
       duplicateCount: duplicates,
       needsCheckCount: needsCheck,
       carrySkipped: carrySkipped,
-      skippedReasons: [...skipped, ...eventSkipped],
+      skippedReasons: [...skipped, ...eventSkipped, ...bank.skipped],
       carryCash: carry.cash,
       carryBank: carry.bank,
       carryReason: carry.reason,
       yearMismatchCount: yearMismatch,
+      bankToAdd: bank.toAdd,
+      bankDuplicateCount: bank.duplicates,
     );
   }
 
@@ -708,6 +733,120 @@ class LedgerFileService {
 
   static bool _isSummaryRow(String text) =>
       text.contains('小計') || text.contains('合計') || text.contains('ATM');
+
+  /// ATM入出金（口座出納）を読む。
+  ///
+  /// 「ATM入出金」の見出し行（入金・出金の列を持つ行）の下を読む。
+  /// 入金 → deposit、出金 → withdraw（摘要・備考に「引出」「カード」があれば cashOut）。
+  /// 既存の口座出納と同じ（種類・日付・摘要・金額）は重複として数える。
+  static ({List<BankEntry> toAdd, int duplicates, List<String> skipped})
+  _readBank(
+    List<List<Data?>> rows,
+    _Columns cols,
+    int yearHint,
+    List<BankEntry> existing,
+  ) {
+    final toAdd = <BankEntry>[];
+    final skipped = <String>[];
+    var duplicates = 0;
+
+    int? headerIdx;
+    var depositCol = -1;
+    var withdrawCol = -1;
+    for (var r = cols.headerRow + 1; r < rows.length; r++) {
+      final texts = [for (final d in rows[r]) _cellText(d)];
+      final dep = texts.indexOf('入金');
+      final wd = texts.indexOf('出金');
+      if (dep >= 0 && wd >= 0) {
+        headerIdx = r;
+        depositCol = dep;
+        withdrawCol = wd;
+        break;
+      }
+    }
+    if (headerIdx == null) {
+      return (toAdd: toAdd, duplicates: 0, skipped: skipped);
+    }
+
+    // 見出しの次の行に「月日・摘要・備考」の項目名があれば列位置を読む
+    var dataStart = headerIdx + 1;
+    var dateCol = cols.date;
+    var labelCol = cols.summary;
+    var memoCol = cols.note;
+    if (dataStart < rows.length) {
+      final texts = [for (final d in rows[dataStart]) _cellText(d)];
+      if (texts.contains('摘要')) {
+        labelCol = texts.indexOf('摘要');
+        final dt = texts.indexOf('月日');
+        if (dt >= 0) dateCol = dt;
+        final memo = texts.indexOf('備考');
+        if (memo >= 0) memoCol = memo;
+        dataStart++;
+      }
+    }
+
+    final counts = <String, int>{};
+    for (final e in existing) {
+      if (e.deleted) continue;
+      final k = _bankKey(e.kind, e.date, e.label, e.amount);
+      counts[k] = (counts[k] ?? 0) + 1;
+    }
+
+    for (var r = dataStart; r < rows.length; r++) {
+      final row = rows[r];
+      if (row.every((d) => _cellText(d).isEmpty)) continue;
+      final label = _text(row, labelCol);
+      final dateText = _text(row, dateCol);
+      // 合計や次の見出しに来たら口座出納の終わり
+      if (label.contains('合計') || label.contains('口座+') || label.contains('残高の')) {
+        break;
+      }
+      final deposit = _amount(row, depositCol);
+      final withdraw = _amount(row, withdrawCol);
+      if (deposit <= 0 && withdraw <= 0) continue;
+
+      final parsed = _parseDate(row, dateCol, yearHint);
+      final memo = memoCol >= 0 ? _text(row, memoCol) : '';
+      final name = label.isEmpty ? (memo.isEmpty ? '（摘要なし）' : memo) : label;
+      if (parsed == null) {
+        skipped.add(
+          '口座出納${r + 1}行目「$name」: 日付を読み取れません（月日「$dateText」）',
+        );
+        continue;
+      }
+      final isCashOut = '$label $memo'.contains('引出') ||
+          '$label $memo'.contains('カード');
+
+      final sides = <(BankEntryKind, int)>[
+        if (deposit > 0) (BankEntryKind.deposit, deposit),
+        if (withdraw > 0)
+          (
+            isCashOut ? BankEntryKind.cashOut : BankEntryKind.withdraw,
+            withdraw,
+          ),
+      ];
+      for (final (kind, amount) in sides) {
+        final key = _bankKey(kind, parsed.date, name, amount);
+        final left = counts[key] ?? 0;
+        if (left > 0) {
+          counts[key] = left - 1;
+          duplicates++;
+          continue;
+        }
+        toAdd.add(
+          BankEntry(date: parsed.date, kind: kind, label: name, amount: amount),
+        );
+      }
+    }
+    return (toAdd: toAdd, duplicates: duplicates, skipped: skipped);
+  }
+
+  static String _bankKey(
+    BankEntryKind kind,
+    DateTime date,
+    String label,
+    int amount,
+  ) => '${kind.name}|${date.year}-${date.month}-${date.day}|$label|$amount';
 
   static int _yearHint(List<List<Data?>> rows, int headerRow) {
     final re = RegExp(r'(20\d{2})年');

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:receipt_report/models/bank_entry.dart';
 import 'package:receipt_report/models/receipt.dart';
 import 'package:receipt_report/services/ledger_file_service.dart';
 
@@ -36,6 +37,7 @@ Uint8List _annualSample(List<List<Object?>> rows, {String sheet = '2025年集計
 }
 
 void main() {
+  bankTests();
   test('年間集計の収入・支出を取り込み、繰越行は除外する', () {
     final bytes = _annualSample([
       [null, '前年度繰越金（現金）', 146353, null, null, null, null],
@@ -191,5 +193,95 @@ void main() {
     expect(preview.toAdd.length, 2);
     expect(preview.incomeTotal, 114000);
     expect(preview.expenseTotal, 33000);
+  });
+}
+
+/// 年間集計の下に ATM入出金 の見出しと明細を付けたExcelを作る
+/// bank: [月日(int serial/null), 摘要, 入金, 出金, 備考]
+Uint8List _annualWithBank(
+  List<List<Object?>> rows,
+  List<List<Object?>> bank,
+) {
+  final excel = Excel.createExcel();
+  final s = excel['2025年集計'];
+  excel.delete('Sheet1');
+  void put(int r, List<Object?> row) {
+    for (var c = 0; c < row.length; c++) {
+      final v = row[c];
+      if (v == null) continue;
+      final cell = s.cell(
+        CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r),
+      );
+      cell.value = v is int ? IntCellValue(v) : TextCellValue(v as String);
+    }
+  }
+
+  const headers = ['月日', '摘要', '収入', '支出', '収支', '残高', '備考'];
+  put(2, headers);
+  for (var r = 0; r < rows.length; r++) {
+    put(r + 3, rows[r]);
+  }
+  // ATM入出金: 見出し・項目名の次から明細
+  final title = rows.length + 4;
+  put(title, [null, 'ATM入出金', '入金', '出金', null, '残高']);
+  put(title + 1, ['月日', '摘要', null, null, null, null, '備考']);
+  for (var i = 0; i < bank.length; i++) {
+    put(title + 2 + i, bank[i]);
+  }
+  put(title + 2 + bank.length + 2, [null, '口座+手持ち現金の合計']);
+  return Uint8List.fromList(excel.encode()!);
+}
+
+void bankTests() {
+  test('ATM入出金を口座出納（入金・出金・現金引出）として読み取る', () {
+    final bytes = _annualWithBank(
+      [
+        [45666, '月例集会分', null, 5427, null, null, null],
+      ],
+      [
+        [45700, '1月集金', 50000, null, null, null, null],
+        [45710, '振込手数料', null, 330, null, null, null],
+        [45720, '現金引出', null, 50000, null, null, 'カード出金'],
+      ],
+    );
+    final p = LedgerFileService.parseAnnual(bytes, const []);
+    // 年間集計の収支は従来どおり（ATMは収支に入れない）
+    expect(p.expenseTotal, 5427);
+    expect(p.incomeTotal, 0);
+    expect(p.bankToAdd.length, 3);
+    expect(p.bankToAdd[0].kind, BankEntryKind.deposit);
+    expect(p.bankToAdd[0].amount, 50000);
+    expect(p.bankToAdd[1].kind, BankEntryKind.withdraw);
+    expect(p.bankToAdd[1].amount, 330);
+    expect(p.bankToAdd[2].kind, BankEntryKind.cashOut);
+    expect(p.bankDeposit, 50000);
+    expect(p.bankWithdraw, 330);
+  });
+
+  test('既存の口座出納と同じ内容は重複として無視する', () {
+    final bytes = _annualWithBank(
+      [],
+      [
+        [45700, '1月集金', 50000, null, null, null, null],
+        [45710, '振込手数料', null, 330, null, null, null],
+      ],
+    );
+    final first = LedgerFileService.parseAnnual(bytes, const []);
+    final again = LedgerFileService.parseAnnual(
+      bytes,
+      const [],
+      existingBank: first.bankToAdd,
+    );
+    expect(again.bankToAdd, isEmpty);
+    expect(again.bankDuplicateCount, 2);
+  });
+
+  test('ATM入出金の欄がないExcelでは口座出納は空になる', () {
+    final bytes = _annualSample([
+      [45666, '月例集会分', null, 5427, null, null, null],
+    ]);
+    final p = LedgerFileService.parseAnnual(bytes, const []);
+    expect(p.bankToAdd, isEmpty);
+    expect(p.bankDuplicateCount, 0);
   });
 }
