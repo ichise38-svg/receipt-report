@@ -1,4 +1,5 @@
 import '../models/receipt.dart';
+import '../models/bank_entry.dart';
 import 'annual_report.dart';
 import 'event_excel_service.dart';
 import 'event_report.dart';
@@ -469,4 +470,99 @@ class EventLayout {
 
   static String _fmtDate(DateTime d) =>
       '${d.year}/${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}';
+}
+
+/// 口座出納（ATM入出金）の行・セル割り当て（収支報告書の下段に表示する）
+///
+/// 列は収支と同じ A〜G（月日・摘要・入金・出金・残高・備考）。
+/// 残高は前年繰越（口座等）から、入金は＋、出金と現金引出は－で計算します。
+class BankLayout {
+  static const titleLabel = 'ATM入出金';
+
+  static List<LayoutRow> build({
+    required List<BankEntry> entries,
+    required int carryBank,
+    required int startRow,
+  }) {
+    final rows = <LayoutRow>[];
+    var row = startRow;
+
+    rows.add(
+      LayoutRow(
+        row: row,
+        kind: 'bankTitle',
+        label: '口座出納の見出し',
+        cells: [
+          LayoutCell(col: 1, row: row, text: titleLabel, header: true),
+          LayoutCell(col: 2, row: row, text: '入金', header: true),
+          LayoutCell(col: 3, row: row, text: '出金', header: true),
+          LayoutCell(col: 5, row: row, text: '残高', header: true),
+        ],
+      ),
+    );
+    row++;
+
+    var balance = carryBank;
+    final sorted = [...entries]..sort((a, b) => a.date.compareTo(b.date));
+    // 前年繰越（口座等）を最初の行に置く
+    rows.add(
+      LayoutRow(
+        row: row,
+        kind: 'bankCarry',
+        label: '前年度繰越金（口座等）',
+        cells: [
+          LayoutCell(col: 1, row: row, text: '前年度繰越金（口座等）'),
+          LayoutCell(col: 5, row: row, amount: balance),
+        ],
+      ),
+    );
+    row++;
+
+    for (var i = 0; i < sorted.length; i++) {
+      final e = sorted[i];
+      final isDeposit = e.kind == BankEntryKind.deposit;
+      balance += e.balanceDelta;
+      final cells = <LayoutCell>[
+        LayoutCell(
+          col: 0,
+          row: row,
+          text: AnnualLayout._fmtDate(e.date),
+        ),
+        LayoutCell(col: 1, row: row, text: e.label),
+        if (isDeposit) LayoutCell(col: 2, row: row, amount: e.amount),
+        if (!isDeposit) LayoutCell(col: 3, row: row, amount: e.amount),
+        LayoutCell(
+          col: 5,
+          row: row,
+          amount: balance,
+          // 直前の行の残高（1始まりでは行番号そのもの）＋入金−出金
+          formula: '=F$row+C${row + 1}-D${row + 1}',
+        ),
+        if (e.kind == BankEntryKind.cashOut)
+          LayoutCell(col: 6, row: row, text: '現金引出'),
+      ];
+      rows.add(
+        LayoutRow(
+          row: row,
+          kind: 'bankEntry',
+          label: '口座出納 ${i + 1}件目（${e.kind.label}）',
+          cells: cells,
+        ),
+      );
+      row++;
+    }
+
+    rows.add(
+      LayoutRow(
+        row: row,
+        kind: 'bankBalance',
+        label: '口座残高',
+        cells: [
+          LayoutCell(col: 1, row: row, text: '口座残高（現時点）'),
+          LayoutCell(col: 5, row: row, amount: balance, formula: '=F$row'),
+        ],
+      ),
+    );
+    return rows;
+  }
 }

@@ -4,7 +4,9 @@ import 'package:intl/intl.dart' hide TextDirection;
 
 import '../models/member.dart';
 import '../models/receipt.dart';
+import '../models/bank_entry.dart';
 import '../services/app_settings.dart';
+import '../services/bank_store.dart';
 import '../services/event_excel_service.dart';
 import '../services/event_report.dart';
 import '../services/excel_export_service.dart';
@@ -53,6 +55,7 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
   // 年間＝登録メンバー数、イベント別＝選択中イベントの出席者数
   int _registeredCount = 0;
   List<Member> _roster = [];
+  List<BankEntry> _bank = [];
   int get _participants => _mode == _ViewMode.annual
       ? _registeredCount
       : _eventAttendees;
@@ -133,6 +136,7 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
     final members = await MemberStore.loadAll();
     final title = await AppSettings.getMainTitle();
     final carry = await AppSettings.getCarry();
+    final bank = await BankStore.loadAll();
     if (!mounted) return;
     final names = EventReport.namesOf(entries);
     setState(() {
@@ -141,6 +145,7 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
       _carryBankCtrl.text = '${carry.bank}';
       _registeredCount = members.length;
       _roster = members;
+      _bank = bank;
       _loading = false;
       _entries = entries;
       _eventNames = names;
@@ -158,14 +163,7 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
       _selectedRow = null;
       _selectedCol = null;
       _rows = _mode == _ViewMode.annual
-          ? AnnualLayout.build(
-              entries: live,
-              carryCash: _parseYen(_carryCashCtrl),
-              carryBank: _parseYen(_carryBankCtrl),
-              participants: _participants,
-              from: _periodFrom,
-              to: _periodTo,
-            )
+          ? _annualWithBank(live)
           : (_eventName == null
                 ? <LayoutRow>[]
                 : EventLayout.build(
@@ -175,6 +173,33 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
                     mainTitle: _mainTitle,
                   ));
     });
+  }
+
+  /// 年間の収支報告書に、口座出納（ATM入出金）を下段として続ける
+  List<LayoutRow> _annualWithBank(List<Receipt> live) {
+    final rows = AnnualLayout.build(
+      entries: live,
+      carryCash: _parseYen(_carryCashCtrl),
+      carryBank: _parseYen(_carryBankCtrl),
+      participants: _participants,
+      from: _periodFrom,
+      to: _periodTo,
+    );
+    var last = 0;
+    for (final r in rows) {
+      if (r.row > last) last = r.row;
+    }
+    final inPeriod = _bank.where((b) {
+      final start = DateTime(_periodFrom.year, _periodFrom.month, _periodFrom.day);
+      final end = DateTime(_periodTo.year, _periodTo.month, _periodTo.day, 23, 59, 59);
+      return !b.date.isBefore(start) && !b.date.isAfter(end);
+    }).toList();
+    final bankRows = BankLayout.build(
+      entries: inPeriod,
+      carryBank: _parseYen(_carryBankCtrl),
+      startRow: last + 3, // 参加人数の下に1行あけて開始
+    );
+    return [...rows, ...bankRows];
   }
 
   Future<void> _pickPeriod(bool isFrom) async {
