@@ -282,7 +282,7 @@ class LedgerFileService {
     final bank = _readBank(rows, cols, yearHint, existingBank);
     // 集金の入金の判定（摘要の月と同じ月の現金収入の合計が一致した入金だけ「集金」にする）
     // 既存の現金収入（取り込み済み）も含めて判定する（前回以前に取り込んだ現金収入との一致を見る）
-    final bankEntries = _markCollections(bank.toAdd, [
+    final bankEntries = markCollections(bank.toAdd, [
       ...existing.where((r) => !r.deleted),
       ...toAdd,
     ]);
@@ -310,7 +310,7 @@ class LedgerFileService {
   /// 候補: 摘要に「集金」か「月分」を含む入金。
   /// 判定: 摘要の月（「○月」）と同じ月の現金収入の合計が入金額と一致したものだけ true。
   /// 一致しない候補は false のまま（取り込み確認で手動により切り替える）。
-  static List<BankEntry> _markCollections(
+  static List<BankEntry> markCollections(
     List<BankEntry> entries,
     List<Receipt> receipts,
   ) {

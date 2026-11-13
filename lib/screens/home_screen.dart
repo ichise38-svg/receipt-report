@@ -184,6 +184,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _scheduleSync();
       }
     }
+    // 既存の口座入金に「集金」判定を一度だけ適用（現金を口座へ移す計算に反映）
+    if (prefs.getBool('collection_backfill_v1') != true) {
+      final receipts = await ReceiptStore.loadAll();
+      final changed = await BankStore.backfillCollections(receipts);
+      await prefs.setBool('collection_backfill_v1', true);
+      if (changed > 0 && mounted) {
+        _reload();
+        _scheduleSync();
+      }
+    }
     // 名簿の同じ人の重複を一度だけ整理（以後は設定画面から手動で実行）
     if (prefs.getBool('members_dedupe_v1') != true) {
       final merged = await MemberStore.mergeDuplicates();

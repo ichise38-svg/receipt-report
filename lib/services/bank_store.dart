@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/bank_entry.dart';
 import '../models/receipt.dart';
+import 'ledger_file_service.dart';
 
 /// 口座の出納（ATM入出金）の保存
 ///
@@ -62,6 +63,30 @@ class BankStore {
       all.add(stamped);
     }
     await _saveAll(all);
+  }
+
+  /// 既存の口座入金に「集金」判定を一度だけ適用する（既存データの移行）
+  /// 判定は取り込みと同じ（摘要の月と同じ月の現金収入の合計が一致）。
+  /// 戻り値: 集金に変わった件数
+  static Future<int> backfillCollections(List<Receipt> receipts) async {
+    final all = await loadRaw();
+    final marked = LedgerFileService.markCollections(
+      all.where((e) => !e.deleted).toList(),
+      receipts,
+    );
+    final byId = {for (final m in marked) m.id: m};
+    var changed = 0;
+    for (var i = 0; i < all.length; i++) {
+      final m = byId[all[i].id];
+      if (m == null || m.collection == all[i].collection) continue;
+      all[i] = all[i].copyWith(
+        collection: m.collection,
+        updatedAt: DateTime.now(),
+      );
+      if (m.collection) changed++;
+    }
+    if (changed > 0) await _saveAll(all);
+    return changed;
   }
 
   /// 削除（tombstone として残し、同期で全員に反映させる）

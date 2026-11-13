@@ -43,6 +43,7 @@ void main() {
   bankMemoTests();
   collectionRegressionTests();
   collectionBalanceTests();
+  collectionBackfillMarkTests();
   test('年間集計の収入・支出を取り込み、繰越行は除外する', () {
     final bytes = _annualSample([
       [null, '前年度繰越金（現金）', 146353, null, null, null, null],
@@ -404,6 +405,38 @@ void collectionBalanceTests() {
       receipts: existing,
     );
     // 集金の現金収入は手持ち現金に +50000 され、入金で -50000 される
+    expect(bal.cashOnHand, 0);
+    expect(bal.bank, 50000);
+  });
+}
+
+void collectionBackfillMarkTests() {
+  test('既存の口座入金も、集金の判定で手持ち現金から口座へ移す対象になる', () {
+    final receipts = [
+      Receipt(
+        kind: EntryKind.income,
+        storeName: '5月集金',
+        date: DateTime(2025, 5, 3),
+        amount: 50000,
+        category: '会費',
+      ),
+    ];
+    final entries = [
+      BankEntry(
+        date: DateTime(2025, 5, 10),
+        kind: BankEntryKind.deposit,
+        label: '5月分集金',
+        amount: 50000,
+      ),
+    ];
+    final marked = LedgerFileService.markCollections(entries, receipts);
+    expect(marked.single.collection, isTrue);
+    final bal = BankReconcile.balances(
+      carryCash: 0,
+      carryBank: 0,
+      bankEntries: marked,
+      receipts: receipts,
+    );
     expect(bal.cashOnHand, 0);
     expect(bal.bank, 50000);
   });
