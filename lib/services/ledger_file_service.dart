@@ -885,7 +885,13 @@ class LedgerFileService {
           continue;
         }
         toAdd.add(
-          BankEntry(date: parsed.date, kind: kind, label: name, amount: amount),
+          BankEntry(
+            date: parsed.date,
+            kind: kind,
+            label: name,
+            amount: amount,
+            memo: memo,
+          ),
         );
       }
     }

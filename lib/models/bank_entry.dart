@@ -44,6 +44,9 @@ class BankEntry {
   /// true のとき、手持ち現金から口座へ移した扱いになる（合計残高は変わらない）。
   final bool collection;
 
+  /// 備考（ATM表の備考欄。例: カード出金 など）
+  final String memo;
+
   BankEntry({
     String? id,
     required this.date,
@@ -53,6 +56,7 @@ class BankEntry {
     DateTime? updatedAt,
     this.deleted = false,
     this.collection = false,
+    this.memo = '',
   }) : id = id ?? const Uuid().v4(),
        updatedAt = updatedAt ?? DateTime.now();
 
@@ -67,6 +71,7 @@ class BankEntry {
     DateTime? updatedAt,
     bool? deleted,
     bool? collection,
+    String? memo,
   }) {
     return BankEntry(
       id: id,
@@ -77,6 +82,7 @@ class BankEntry {
       updatedAt: updatedAt ?? this.updatedAt,
       deleted: deleted ?? this.deleted,
       collection: collection ?? this.collection,
+      memo: memo ?? this.memo,
     );
   }
 
@@ -89,6 +95,7 @@ class BankEntry {
     'updatedAt': isoMillis(updatedAt),
     'deleted': deleted,
     'collection': collection,
+    'memo': memo,
   };
 
   factory BankEntry.fromJson(Map<String, dynamic> json) {
@@ -103,6 +110,7 @@ class BankEntry {
       updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? '') ?? date,
       deleted: json['deleted'] as bool? ?? false,
       collection: json['collection'] as bool? ?? false,
+      memo: json['memo'] as String? ?? '',
     );
   }
 }

@@ -38,12 +38,14 @@ class LayoutRow {
   final String kind; // carry / entry / subtotal / total / participants
   final String label; // 行の説明
   final Receipt? receipt; // 明細行のみ
+  final BankEntry? bank; // 口座出納行のみ
   final List<LayoutCell> cells;
   const LayoutRow({
     required this.row,
     required this.kind,
     required this.label,
     this.receipt,
+    this.bank,
     required this.cells,
   });
 }
@@ -477,6 +479,16 @@ class EventLayout {
 /// 列は収支と同じ A〜G（月日・摘要・入金・出金・残高・備考）。
 /// 残高は前年繰越（口座等）から、入金は＋、出金と現金引出は－で計算します。
 class BankLayout {
+  /// グリッドのG列（備考）に出す文字。現金引出・集金の入金・備考を続けて表示する
+  static String _bankNote(BankEntry e) {
+    final parts = <String>[
+      if (e.kind == BankEntryKind.cashOut) '現金引出',
+      if (e.collection) '集金の入金（現金→口座）',
+      if (e.memo.isNotEmpty) e.memo,
+    ];
+    return parts.join(' / ');
+  }
+
   static const titleLabel = 'ATM入出金';
 
   static List<LayoutRow> build({
@@ -534,15 +546,15 @@ class BankLayout {
           // 直前の行の残高（1始まりでは行番号そのもの）＋入金−出金
           formula: '=F$row+C${row + 1}-D${row + 1}',
         ),
-        if (e.kind == BankEntryKind.cashOut)
-          LayoutCell(col: 6, row: row, text: '現金引出'),
-        if (e.collection) LayoutCell(col: 6, row: row, text: '集金の入金（現金→口座）'),
+        if (_bankNote(e).isNotEmpty)
+          LayoutCell(col: 6, row: row, text: _bankNote(e)),
       ];
       rows.add(
         LayoutRow(
           row: row,
           kind: 'bankEntry',
           label: '口座出納 ${i + 1}件目（${e.kind.label}）',
+          bank: e,
           cells: cells,
         ),
       );

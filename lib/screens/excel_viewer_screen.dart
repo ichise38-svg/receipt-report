@@ -5,6 +5,9 @@ import 'package:intl/intl.dart' hide TextDirection;
 import '../models/member.dart';
 import '../models/receipt.dart';
 import '../models/bank_entry.dart';
+import 'bank_ledger_screen.dart';
+import 'receipt_form_screen.dart';
+import '../services/receipt_merge.dart';
 import '../services/app_settings.dart';
 import '../services/bank_store.dart';
 import '../services/event_excel_service.dart';
@@ -56,14 +59,14 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
   int _registeredCount = 0;
   List<Member> _roster = [];
   List<BankEntry> _bank = [];
-  int get _participants => _mode == _ViewMode.annual
-      ? _registeredCount
-      : _eventAttendees;
+  int get _participants =>
+      _mode == _ViewMode.annual ? _registeredCount : _eventAttendees;
   int get _eventAttendees {
     final name = _eventName;
     if (name == null) return 0;
     return _roster.where((m) => m.attendsEvent(name)).length;
   }
+
   // 年間報告の対象期間（既定は今年の 1/1〜12/31 で完結）
   late DateTime _periodFrom = DateTime(DateTime.now().year, 1, 1);
   late DateTime _periodTo = DateTime(DateTime.now().year, 12, 31);
@@ -190,8 +193,19 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
       if (r.row > last) last = r.row;
     }
     final inPeriod = _bank.where((b) {
-      final start = DateTime(_periodFrom.year, _periodFrom.month, _periodFrom.day);
-      final end = DateTime(_periodTo.year, _periodTo.month, _periodTo.day, 23, 59, 59);
+      final start = DateTime(
+        _periodFrom.year,
+        _periodFrom.month,
+        _periodFrom.day,
+      );
+      final end = DateTime(
+        _periodTo.year,
+        _periodTo.month,
+        _periodTo.day,
+        23,
+        59,
+        59,
+      );
       return !b.date.isBefore(start) && !b.date.isAfter(end);
     }).toList();
     final bankRows = BankLayout.build(
@@ -688,6 +702,7 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
   Widget _buildExplain() {
     final scheme = Theme.of(context).colorScheme;
     final row = _selected;
+    final editable = _editableRow(row);
     final String body;
     if (row == null) {
       body =
@@ -729,6 +744,17 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(body, style: const TextStyle(fontSize: 13, height: 1.5)),
+          if (editable != null) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () => _editRow(editable),
+                icon: const Icon(Icons.edit, size: 16),
+                label: Text(_editLabel(editable)),
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -741,6 +767,33 @@ class _ExcelViewerScreenState extends State<ExcelViewerScreen> {
         ],
       ),
     );
+  }
+
+  /// 編集できる行（明細・口座出納）。見出し・小計・残高などは対象外
+  LayoutRow? _editableRow(LayoutRow? row) {
+    if (row == null) return null;
+    if (row.receipt != null || row.bank != null) return row;
+    return null;
+  }
+
+  String _editLabel(LayoutRow row) =>
+      row.bank != null ? 'この口座出納を編集' : 'この明細を編集';
+
+  /// 行の内容を既存の編集画面で直す。戻ったら再計算する
+  Future<void> _editRow(LayoutRow row) async {
+    if (row.bank != null) {
+      final saved = await showBankEntryDialog(context, entry: row.bank);
+      if (saved == true) {
+        await _load();
+      }
+      return;
+    }
+    final receipt = row.receipt;
+    if (receipt == null) return;
+    await Navigator.of(context).push<SaveOutcome>(
+      MaterialPageRoute(builder: (_) => ReceiptFormScreen(receipt: receipt)),
+    );
+    await _load();
   }
 
   String _columnRole(int col) {

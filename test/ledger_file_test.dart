@@ -40,6 +40,7 @@ Uint8List _annualSample(List<List<Object?>> rows, {String sheet = '2025年集計
 void main() {
   bankTests();
   collectionTests();
+  bankMemoTests();
   test('年間集計の収入・支出を取り込み、繰越行は除外する', () {
     final bytes = _annualSample([
       [null, '前年度繰越金（現金）', 146353, null, null, null, null],
@@ -333,5 +334,25 @@ void collectionTests() {
     expect(b.bank, 50000);
     expect(b.cashOnHand, 0);
     expect(b.bank + b.cashOnHand, 50000);
+  });
+}
+
+void bankMemoTests() {
+  test('ATM表の備考を口座出納のmemoとして読み取り、JSONで往復できる', () {
+    final bytes = _annualWithBank(
+      [
+        [45666, '月例集会分', null, 5427, null, null, null],
+      ],
+      [
+        [45800, '1月集金', 50000, null, null, null, '1月分'],
+        [45810, '現金引出', null, 20000, null, null, 'カード出金'],
+      ],
+    );
+    final p = LedgerFileService.parseAnnual(bytes, const []);
+    expect(p.bankToAdd.length, 2);
+    expect(p.bankToAdd[0].memo, '1月分');
+    final back = BankEntry.fromJson(p.bankToAdd[0].toJson());
+    expect(back.memo, '1月分');
+    expect(back.collection, p.bankToAdd[0].collection);
   });
 }

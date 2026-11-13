@@ -283,6 +283,14 @@ class _BankLedgerScreenState extends State<BankLedgerScreen>
 }
 
 /// 出納の入力ダイアログ（入金・出金・現金引出）
+/// 口座出納の編集ダイアログを開く（ビューワーなどからも使う）
+Future<bool?> showBankEntryDialog(BuildContext context, {BankEntry? entry}) {
+  return showDialog<bool>(
+    context: context,
+    builder: (_) => _BankEntryDialog(entry: entry),
+  );
+}
+
 class _BankEntryDialog extends StatefulWidget {
   final BankEntry? entry;
   const _BankEntryDialog({this.entry});
@@ -295,9 +303,11 @@ class _BankEntryDialogState extends State<_BankEntryDialog> {
   final _formKey = GlobalKey<FormState>();
   final _labelCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
+  final _memoCtrl = TextEditingController();
   final _dateFmt = DateFormat('yyyy/MM/dd');
   late BankEntryKind _kind;
   late DateTime _date;
+  late bool _collection;
 
   @override
   void initState() {
@@ -307,12 +317,15 @@ class _BankEntryDialogState extends State<_BankEntryDialog> {
     _date = e?.date ?? DateTime.now();
     _labelCtrl.text = e?.label ?? '';
     _amountCtrl.text = e?.amount.toString() ?? '';
+    _memoCtrl.text = e?.memo ?? '';
+    _collection = e?.collection ?? false;
   }
 
   @override
   void dispose() {
     _labelCtrl.dispose();
     _amountCtrl.dispose();
+    _memoCtrl.dispose();
     super.dispose();
   }
 
@@ -338,6 +351,8 @@ class _BankEntryDialogState extends State<_BankEntryDialog> {
         kind: _kind,
         label: _labelCtrl.text.trim(),
         amount: int.parse(_amountCtrl.text.replaceAll(',', '').trim()),
+        memo: _memoCtrl.text.trim(),
+        collection: _kind == BankEntryKind.deposit && _collection,
       ),
     );
     if (!mounted) return;
@@ -410,6 +425,24 @@ class _BankEntryDialogState extends State<_BankEntryDialog> {
                   return null;
                 },
               ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _memoCtrl,
+                decoration: const InputDecoration(
+                  labelText: '備考',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              if (_kind == BankEntryKind.deposit)
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text('集金の入金（現金を口座へ移した）'),
+                  value: _collection,
+                  onChanged: (v) => setState(() => _collection = v ?? false),
+                ),
             ],
           ),
         ),
