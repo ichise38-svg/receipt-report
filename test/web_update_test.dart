@@ -49,8 +49,10 @@ void buildNumberWebTests() {
   });
 
   test('Web版: 比較用の値（1.0.7+13）なら、公開版 1.0.7 build 13 は更新なし', () async {
-    final client = MockClient((_) async => http.Response(
-        '{"version":"1.0.7","build_number":"13"}', 200));
+    final client = MockClient(
+      (_) async =>
+          http.Response('{"version":"1.0.7","build_number":"13"}', 200),
+    );
     final info = await WebUpdateChecker.check(
       appBase: Uri.parse('https://example.com/receipt-report/'),
       currentVersion: UpdateChecker.currentCompare,
@@ -60,8 +62,10 @@ void buildNumberWebTests() {
   });
 
   test('Web版: 旧1.0.7 (12) からは build 13 への更新ありと判定される', () async {
-    final client = MockClient((_) async => http.Response(
-        '{"version":"1.0.7","build_number":"13"}', 200));
+    final client = MockClient(
+      (_) async =>
+          http.Response('{"version":"1.0.7","build_number":"13"}', 200),
+    );
     final info = await WebUpdateChecker.check(
       appBase: Uri.parse('https://example.com/receipt-report/'),
       currentVersion: '1.0.7+12',

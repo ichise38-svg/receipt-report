@@ -41,6 +41,8 @@ void main() {
   bankTests();
   collectionTests();
   bankMemoTests();
+  collectionRegressionTests();
+  collectionBalanceTests();
   test('年間集計の収入・支出を取り込み、繰越行は除外する', () {
     final bytes = _annualSample([
       [null, '前年度繰越金（現金）', 146353, null, null, null, null],
@@ -354,5 +356,55 @@ void bankMemoTests() {
     final back = BankEntry.fromJson(p.bankToAdd[0].toJson());
     expect(back.memo, '1月分');
     expect(back.collection, p.bankToAdd[0].collection);
+  });
+}
+
+void collectionRegressionTests() {
+  test('既存の現金収入（取り込み済み）と合計が一致しても集金に判定する', () {
+    final existing = [
+      Receipt(
+        kind: EntryKind.income,
+        storeName: '5月集金',
+        date: DateTime(2025, 5, 3),
+        amount: 50000,
+        category: '会費',
+      ),
+    ];
+    final bytes = _annualWithBank([], [
+      [45800, '5月分集金', 50000, null, null, null, null],
+    ]);
+    final p = LedgerFileService.parseAnnual(bytes, existing);
+    expect(p.bankToAdd.length, 1);
+    expect(p.bankToAdd[0].collection, isTrue, reason: '既存の現金収入を含めて判定する');
+  });
+}
+
+void collectionBalanceTests() {
+  test('取り込みで集金と判定した入金は、保存後に手持ち現金を減らし口座を増やす', () {
+    final existing = [
+      Receipt(
+        kind: EntryKind.income,
+        storeName: '5月集金',
+        date: DateTime(2025, 5, 3),
+        amount: 50000,
+        category: '会費',
+      ),
+    ];
+    final bytes = _annualWithBank([], [
+      [45800, '5月分集金', 50000, null, null, null, null],
+    ]);
+    final p = LedgerFileService.parseAnnual(bytes, existing);
+    final saved = p.bankToAdd
+        .map((b) => b.copyWith(updatedAt: DateTime.now()))
+        .toList();
+    final bal = BankReconcile.balances(
+      carryCash: 0,
+      carryBank: 0,
+      bankEntries: saved,
+      receipts: existing,
+    );
+    // 集金の現金収入は手持ち現金に +50000 され、入金で -50000 される
+    expect(bal.cashOnHand, 0);
+    expect(bal.bank, 50000);
   });
 }

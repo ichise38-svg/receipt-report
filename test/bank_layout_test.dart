@@ -41,7 +41,10 @@ void main() {
     final balance = rows.firstWhere((r) => r.kind == 'bankBalance');
     expect(balance.cells.firstWhere((c) => c.col == 5).amount, 100000);
     // 入金・出金・現金引出の欄
-    expect(entries[1].cells.any((c) => c.col == 3 && c.amount == 30000), isTrue);
+    expect(
+      entries[1].cells.any((c) => c.col == 3 && c.amount == 30000),
+      isTrue,
+    );
     expect(last.cells.any((c) => c.col == 6 && c.text == '現金引出'), isTrue);
   });
 

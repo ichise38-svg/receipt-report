@@ -12,20 +12,28 @@ void main() {
     });
 
     test('半角カナと全角カナは同じ名前（濁点・半濁点も）', () {
-      expect(MemberDedupe.normalizeName('ﾔﾏﾀﾞ ﾀﾛｳ'),
-          MemberDedupe.normalizeName('ヤマダ タロウ'));
-      expect(MemberDedupe.normalizeName('ﾊﾟｰﾃｨ'),
-          MemberDedupe.normalizeName('パーティ'));
+      expect(
+        MemberDedupe.normalizeName('ﾔﾏﾀﾞ ﾀﾛｳ'),
+        MemberDedupe.normalizeName('ヤマダ タロウ'),
+      );
+      expect(
+        MemberDedupe.normalizeName('ﾊﾟｰﾃｨ'),
+        MemberDedupe.normalizeName('パーティ'),
+      );
     });
 
     test('半角英数字と大文字小文字は同じ名前', () {
-      expect(MemberDedupe.normalizeName('ABC１２'),
-          MemberDedupe.normalizeName('abc12'));
+      expect(
+        MemberDedupe.normalizeName('ABC１２'),
+        MemberDedupe.normalizeName('abc12'),
+      );
     });
 
     test('ひらがなとカタカナは統合しない（別人扱い）', () {
-      expect(MemberDedupe.normalizeName('やまだ'),
-          isNot(MemberDedupe.normalizeName('ヤマダ')));
+      expect(
+        MemberDedupe.normalizeName('やまだ'),
+        isNot(MemberDedupe.normalizeName('ヤマダ')),
+      );
     });
 
     test('表示名は変えない（比較用のみ）', () {

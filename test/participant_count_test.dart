@@ -9,9 +9,7 @@ void main() {
       Member(name: 'C'),
     ];
     final registered = members.length;
-    final attendees = members
-        .where((m) => m.attendsEvent('新年会'))
-        .length;
+    final attendees = members.where((m) => m.attendsEvent('新年会')).length;
     expect(registered, 3);
     expect(attendees, 2);
   });

@@ -11,13 +11,13 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
 
-    await tester.pumpWidget(const MaterialApp(
-      home: Scaffold(
-        body: SingleChildScrollView(
-          child: ExcelViewerScreen(embedded: true),
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(child: ExcelViewerScreen(embedded: true)),
         ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
     expect(find.text('全画面で見る'), findsOneWidget);
 
@@ -27,7 +27,6 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
 
-    expect(find.text('Excelビューワー'), findsOneWidget,
-        reason: '全画面（別画面）が開いていない');
+    expect(find.text('Excelビューワー'), findsOneWidget, reason: '全画面（別画面）が開いていない');
   });
 }

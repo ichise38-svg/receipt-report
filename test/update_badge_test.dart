@@ -42,10 +42,7 @@ void buildNumberTests() {
       AppSettings.compareVersionStrings('1.0.10 (16)', '1.0.9 (15)'),
       greaterThan(0),
     );
-    expect(
-      AppSettings.compareVersionStrings('1.0.10 (16)', '1.0.10+16'),
-      0,
-    );
+    expect(AppSettings.compareVersionStrings('1.0.10 (16)', '1.0.10+16'), 0);
     SharedPreferences.setMockInitialValues({});
     await AppSettings.saveLatestVersion('1.0.10 (16)');
     expect(await AppSettings.hasNewerVersion('1.0.9+15'), isTrue);

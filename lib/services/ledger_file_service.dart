@@ -281,7 +281,11 @@ class LedgerFileService {
     // ATM入出金（口座出納）
     final bank = _readBank(rows, cols, yearHint, existingBank);
     // 集金の入金の判定（摘要の月と同じ月の現金収入の合計が一致した入金だけ「集金」にする）
-    final bankEntries = _markCollections(bank.toAdd, toAdd);
+    // 既存の現金収入（取り込み済み）も含めて判定する（前回以前に取り込んだ現金収入との一致を見る）
+    final bankEntries = _markCollections(bank.toAdd, [
+      ...existing.where((r) => !r.deleted),
+      ...toAdd,
+    ]);
 
     return LedgerImportPreview(
       sheetName: found.name,

@@ -283,10 +283,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  Text(
-                    '参加者名簿',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+                  Text('参加者名簿', style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 4),
                   OutlinedButton.icon(
                     onPressed: _confirmMergeMembers,
