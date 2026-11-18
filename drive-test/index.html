@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Drive 検証（関桜会収支）</title>
+<script src="https://accounts.google.com/gsi/client" onload="initClient()" async defer></script>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:16px;max-width:600px;margin:auto;color:#222}
+  button{font-size:16px;padding:12px 16px;margin:6px 0;width:100%;border-radius:8px;border:1px solid #888;background:#fff}
+  button:disabled{opacity:.4}
+  #log{background:#f3f3f3;padding:8px;font-size:13px;white-space:pre-wrap;word-break:break-all;min-height:120px;border-radius:6px}
+  img{max-width:240px;border:1px solid #ccc;margin-top:8px}
+</style>
+</head>
+<body>
+<h3>Google Drive 検証（関桜会収支）</h3>
+<p style="font-size:13px">テスト用の画像を、アプリ専用フォルダ以外には作成しません（drive.file 権限）。</p>
+<button id="login" disabled>1. Googleでログイン</button>
+<button id="upload" disabled>2. テスト画像をアップロード</button>
+<button id="show" disabled>3. Driveから取得して表示</button>
+<div id="preview"></div>
+<div id="log"></div>
+<script>
+const CLIENT_ID = '114769333729-q5sfqc8r1i1rvlqscpb8ute9203je6bq.apps.googleusercontent.com';
+const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+let tokenClient = null, token = null, fileId = null, imageBlob = null;
+const logEl = document.getElementById('log');
+const $ = (id) => document.getElementById(id);
+function log(m) { logEl.textContent += new Date().toLocaleTimeString() + ' ' + m + '\n'; }
+
+function initClient() {
+  try {
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPE,
+      callback: (r) => {
+        if (r.error) { log('ログイン失敗: ' + r.error); return; }
+        token = r.access_token;
+        log('ログイン成功');
+        $('upload').disabled = false;
+      },
+      error_callback: (e) => log('ログインエラー: ' + (e.type || JSON.stringify(e))),
+    });
+    $('login').disabled = false;
+    log('準備完了。ログインを押してください');
+  } catch (e) {
+    log('読み込みエラー: ' + e);
+  }
+}
+
+$('login').onclick = () => {
+  if (!tokenClient) { log('読み込み中です。少し待ってください'); return; }
+  tokenClient.requestAccessToken();
+};
+
+async function makeImage() {
+  const c = document.createElement('canvas');
+  c.width = 300; c.height = 200;
+  const g = c.getContext('2d');
+  g.fillStyle = '#FED5E3'; g.fillRect(0, 0, 300, 200);
+  g.fillStyle = '#333'; g.font = '28px sans-serif';
+  g.fillText('Drive test', 60, 90);
+  g.fillText(new Date().toLocaleString('ja-JP'), 40, 130);
+  return new Promise((res) => c.toBlob(res, 'image/png'));
+}
+
+$('upload').onclick = async () => {
+  try {
+    imageBlob = await makeImage();
+    const boundary = 'drivetest' + Date.now();
+    const meta = { name: 'drive-test-' + Date.now() + '.png', mimeType: 'image/png' };
+    const body = new Blob([
+      '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(meta) + '\r\n',
+      '--' + boundary + '\r\nContent-Type: image/png\r\n\r\n',
+      imageBlob,
+      '\r\n--' + boundary + '--',
+    ]);
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'multipart/related; boundary=' + boundary },
+      body,
+    });
+    const json = await res.json();
+    if (!res.ok) { log('アップロード失敗: HTTP ' + res.status + ' ' + JSON.stringify(json)); return; }
+    fileId = json.id;
+    log('アップロード成功: ' + json.name + ' (id: ' + fileId + ')');
+    $('show').disabled = false;
+  } catch (e) {
+    log('アップロード例外: ' + e);
+  }
+};
+
+$('show').onclick = async () => {
+  try {
+    const res = await fetch('https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media', {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    if (!res.ok) { log('取得失敗: HTTP ' + res.status); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    $('preview').innerHTML = '';
+    const img = document.createElement('img');
+    img.src = url;
+    $('preview').appendChild(img);
+    log('取得・表示成功（' + blob.size + ' bytes）');
+  } catch (e) {
+    log('取得例外: ' + e);
+  }
+};
+</script>
+</body>
+</html>
